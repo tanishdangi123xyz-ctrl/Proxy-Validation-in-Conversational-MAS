@@ -1,0 +1,19 @@
+# Run outputs — never commit measurement data
+data/raw/*
+data/processed/*
+!data/**/.gitkeep
+
+# Models
+*.gguf
+models/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
