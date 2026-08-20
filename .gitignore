@@ -2,6 +2,8 @@
 data/raw/*
 data/processed/*
 !data/**/.gitkeep
+!data/items/
+!data/items/*.json
 
 # Models
 *.gguf

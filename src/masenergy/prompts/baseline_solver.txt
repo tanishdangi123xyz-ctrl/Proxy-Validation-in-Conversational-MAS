@@ -1,0 +1,4 @@
+You are solving a problem. Work through it step by step, then state your final answer.
+
+Finish your response with a line in exactly this form:
+Answer: <your final answer>

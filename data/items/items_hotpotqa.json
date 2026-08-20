@@ -1,0 +1,652 @@
+{
+  "dataset": "hotpotqa",
+  "source": "hotpotqa/hotpot_qa",
+  "source_split": "validation",
+  "pool_size": 7405,
+  "sample_seed": 20260820,
+  "n_items": 80,
+  "created_utc": "2026-08-20T14:41:00.941069+00:00",
+  "sha256": "2a50d472d32b7d23b40f2243b295c1c8705c8498a0495884e8392b55531d8157",
+  "items": [
+    {
+      "id": "hotpotqa-00221",
+      "rank": 0,
+      "question": "Which television series featured an actor who also performed in \"The Young Ones\"?",
+      "answer": "\"The Comic Strip Presents...\"",
+      "context": "Ade Edmondson\nAdrian Charles \"Ade\" Edmondson (born 24 January 1957) is an English comedian, actor, writer, musician, television presenter and director. He came to prominence in the early 1980s and was part of the alternative comedy boom. He is probably best known for his comedic roles in the television series \"The Young Ones\" (1982–84) and \"Bottom\" (1991–95), which he wrote together with his long-time collaborative partner Rik Mayall. Edmondson also appeared in \"The Comic Strip Presents...\" series of films throughout the 1980s and 1990s. For one episode of this he created the spoof heavy metal band Bad News, and for another he played his nihilistic alter-ego Eddie Monsoon, an offensive South African television star.\n\nBad News (band)\nBad News were an English spoof heavy metal band, created for the Channel 4 television series \"The Comic Strip Presents...\". Its members were Vim Fuego (aka Alan Metcalfe), vocals and lead guitar (played by Ade Edmondson); Den Dennis, rhythm guitar (Nigel Planer); Colin Grigson, bass (Rik Mayall); and Spider \"Eight-Legs\" Webb, drums (Peter Richardson).",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00368",
+      "rank": 1,
+      "question": "Haruki Murakami said that writing \"Dance Dance Dance\" had been a healing act after his unexpected fame following the publication of a novel published in which year ?",
+      "answer": "1987",
+      "context": "Norwegian Wood (novel)\nNorwegian Wood (ノルウェイの森 , Noruwei no Mori ) is a 1987 novel by Japanese author Haruki Murakami.\n\nDance Dance Dance (novel)\nDance Dance Dance (ダンス・ダンス・ダンス , Dansu Dansu Dansu ) is the sixth novel by Japanese writer Haruki Murakami. First published in 1988, it was translated into English by Alfred Birnbaum in 1994. The book is a sequel to Murakami's novel \"A Wild Sheep Chase\". In 2001, Murakami said that writing \"Dance Dance Dance\" had been a healing act after his unexpected fame following the publication of \"Norwegian Wood\" and that, because of this, he had enjoyed writing \"Dance\" more than any other.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00393",
+      "rank": 2,
+      "question": "In which county is the English king Harold Godwinson buried?",
+      "answer": "Essex",
+      "context": "Edith Walks\nEdith Walks is a 2017 documentary film directed by Andrew Kötting which imagines a journey by Edith the Fair, wife of English king Harold Godwinson, from Waltham Abbey where he is buried to near the site of the Battle of Hastings and the invasion of England by William the Conqueror in 1066. It includes contributions from the writers Alan Moore and Iain Sinclair, the torch singer Claudia Barton, and the musician Jem Finer.\n\nWaltham Abbey Church\nThe Abbey Church of Waltham Holy Cross and St Lawrence is the parish church of the town of Waltham Abbey, Essex, England. It has been a place of worship since the 7th century. The present building dates mainly from the early 12th century and is an example of Norman architecture. To the east of the existing church are traces of an enormous eastward enlargement of the building, begun following the re-foundation of the abbey in 1177. In the Late Middle Ages, Waltham was one of the largest church buildings in England and a major site of pilgrimage; in 1540 was the last religious community to be closed during the Dissolution of the Monasteries. It is still an active parish church for the town.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00441",
+      "rank": 3,
+      "question": "In between The Bears and I and Oceans which was released on July 31, 1974, by Buena Vista Distribution?",
+      "answer": "The Bears and I",
+      "context": "The Bears and I\nThe Bears and I is a 1974 American drama film directed by Bernard McEveety and written by John Whedon. The film stars Patrick Wayne, Chief Dan George, Andrew Duggan, Michael Ansara and Robert Pine. The film was released on July 31, 1974, by Buena Vista Distribution.\n\nOceans (film)\nOceans (French: Océans ) is a 2009 French nature documentary film directed, produced, co-written, and narrated by Jacques Perrin, with Jacques Cluzaud as co-director. The film explores the marine species of Earth's five oceans and reflects on the negative aspects of human activity on the environment, with Perrin (Pierce Brosnan in English) providing narration.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00567",
+      "rank": 4,
+      "question": "Which company owns the hotel on whose premises the Cotal Arena is located ?",
+      "answer": "Las Vegas Sands company.",
+      "context": "The Venetian Macao\nThe Venetian Macao () is a luxury hotel and casino resort in Macau owned by the American Las Vegas Sands company. The Venetian is a 39-story, casino hotel on the Cotai Strip in Macau. The 10500000 sqft Venetian Macao is modeled on its sister casino resort The Venetian Las Vegas, and is the seventh-largest building in the world by floor area. The Venetian Macao is also the largest casino in the world, and the largest single structure hotel building in Asia.\n\nCotai Arena\nThe Cotai Arena is an indoor arena, located on the premises of The Venetian Macao, on the Cotai Strip, in Macau, China. It opened in 2007 with a seating capacity of 15,000. The arena was known as Venetian Arena from 2007 to 2010, when it was renamed as \"CotaiArena\". It hosts sporting events such as basketball, tennis and boxing, as well as concerts and international televised awards shows.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00591",
+      "rank": 5,
+      "question": "Red Mountain is a film that centers on an attempt by a group of what group of Civil War rangers?",
+      "answer": "pro-Confederate",
+      "context": "Red Mountain (film)\nRed Mountain is a 1951 Western historical film, starring Alan Ladd, set in the last days of the US Civil War. The plot centers on an attempt by Quantrill's Raiders to stir up rebellion in the West.\n\nQuantrill's Raiders\nQuantrill's Raiders were the best-known of the pro-Confederate partisan rangers (\"bushwhackers\") who fought in the American Civil War. Their leader was William Quantrill and they included Jesse James and his brother Frank.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00593",
+      "rank": 6,
+      "question": "Which band has released the most studio albums, Blonde Redhead or Rob Zombie's band White Zombie?",
+      "answer": "Blonde Redhead",
+      "context": "Blonde Redhead\nBlonde Redhead is an alternative rock band composed of Kazu Makino (vocals, rhythm guitar) and twin brothers Simone and Amedeo Pace (drums and lead guitar/vocals, respectively) that formed in New York City in 1993. The band's earliest albums were noted for their noise rock influences, though their sound evolved by the early 2000s with the releases of \"Misery is a Butterfly\" (2004) and \"23\" (2007), which both incorporated elements of dream pop, shoegaze and other genres. They have released nine regular studio albums and have toured internationally.\n\nRob Zombie\nRob Zombie (born Robert Bartleh Cummings; January 12, 1965) is an American musician, filmmaker and screenwriter. Zombie rose to fame as a founding member of the heavy metal band White Zombie, releasing four studio albums with the band. He is the older brother of Spider One, lead vocalist for American rock band Powerman 5000.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-00962",
+      "rank": 7,
+      "question": "Who currently has more store locations? Bearno's or Patxi's Chicago Pizza?",
+      "answer": "Bearno's Pizza",
+      "context": "Patxi's Chicago Pizza\nPatxi's is a small pizzeria chain based in the San Francisco Bay Area, founded in San Francisco, California by William Freeman and Francisco “Patxi” Azpiroz. They specialize in Chicago-style pizza. Current locations include Palo Alto, Campbell, Lafayette, San Francisco, Greenbrae, San Jose, Seattle, and Denver. In April, 2014, Patxi's announced plans to open sixty new stores over the next five years. On November 6, 2015, Patxi's partnered with UberEATS to offer $10.00 cheese pizzas that were delivered in a box that said \"Little Nero's\" to honor the twenty-fifth anniversary of the release of the comedy film \"Home Alone\".\n\nBearno's\nBearno's Pizza is a pizza franchise based in Louisville, Kentucky with about 14 locations in Kentucky and Indiana.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01247",
+      "rank": 8,
+      "question": "Astro Boy and The Secret of Kells share which genre of film?",
+      "answer": "Animation",
+      "context": "The Secret of Kells\nThe Secret of Kells is a 2009 French-Belgian-Irish animated fantasy film animated by Cartoon Saloon that premiered on 8 February 2009 at the 59th Berlin International Film Festival. It went into wide release in Belgium and France on 11 February, and Ireland on 3 March.\n\nAstro Boy (film)\nAstro Boy is a 2009 Hong Kong-American computer-animated action-comedy superhero film loosely based on the manga series of the same name by the Japanese writer and illustrator Osamu Tezuka. It was produced by Imagi Animation Studios, and directed by David Bowers, who co-wrote the screenplay with Timothy Harris. Freddie Highmore provides the voice of Astro Boy in the film alongside the voices of Kristen Bell, Nathan Lane, Eugene Levy, Matt Lucas, Bill Nighy, Donald Sutherland, Charlize Theron and Nicolas Cage.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01520",
+      "rank": 9,
+      "question": "Vestfold and Telemark each border what other Norwegian county?",
+      "answer": "Buskerud",
+      "context": "Telemark\nTelemark ] is a county in Norway, bordering Vestfold, Buskerud, Hordaland, Rogaland and Aust-Agder. The county administration is in Skien. Until 1919 the county was known as \"Bratsberg amt\".\n\nVestfold\nVestfold ] is a county in Norway, bordering Buskerud and Telemark. The county administration is in Tønsberg, and the largest city is Sandefjord. With the exception of Oslo county, Vestfold is the smallest county in Norway by area.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01521",
+      "rank": 10,
+      "question": "Are Out Traveler and Reader's Digest both magazines?",
+      "answer": "yes",
+      "context": "Reader's Digest\nReader's Digest is an American general-interest family magazine, published ten times a year. Formerly based in Chappaqua, New York, it is now headquartered in Midtown Manhattan. The magazine was founded in 1920, by DeWitt Wallace and Lila Bell Wallace. For many years, \"Reader's Digest\" was the best-selling consumer magazine in the United States; it lost the distinction in 2009 to \"Better Homes and Gardens\". According to Mediamark Research (2006), \"Reader's Digest\" reaches more readers with household incomes of $100,000+ than \"Fortune\", \"The Wall Street Journal\", \"Business Week\", and \"Inc.\" combined.\n\nOut Traveler\nOut Traveler is a gay and lesbian travel magazine from the publishers of \"Out\" and \"The Advocate\", combining photography with coverage of LGBT travel topics. Published as a stand-alone title from 2003 to 2008, it was subsequently incorporated as a supplement to \"Out\" magazine and is no longer available for subscriptions as a stand-alone title.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01585",
+      "rank": 11,
+      "question": "What country does Washington Dulles International Airport and Baltimore–Washington metropolitan area have in common?",
+      "answer": "United States",
+      "context": "Kaneohe, Hawaii\nKāneʻ ohe is a census-designated place (CDP) included in the City and County of Honolulu and located in Hawaiʻ i state District of Koʻ olaupoko on the island of Oʻ ahu. In the Hawaiian language, \"kāne ʻ ohe\" means \"bamboo man\". According to an ancient Hawaiian story a local woman compared her husband's cruelty to the sharp edge of cutting bamboo; thus the place was named Kāneʻ ohe or \"Bamboo man\". The population was 34,597 at the 2010 census. Kāneʻ ohe is the largest of several communities along Kāneʻ ohe Bay and one of the two largest residential communities on the windward side of Oʻ ahu (the other is Kailua). The commercial center of the town is spread mostly along Kamehameha Highway.\n\nNorth Koolaupoko, Hawaii\nNorth Koʻ olaupoko is an area in the City & County of Honolulu, Hawaii, United States, on the island of Oʻ ahu. It corresponds to the Waikane census-designated place, with a population of 778 at the 2010 census. In Hawaiian, \"koʻ olau poko\" means \"short windward\", referring to the fact that this is the shorter of the two windward districts on the island (\"Koʻ olauloa\" or \"long windward\" is the other). Koʻ olaupoko extends from Makapuʻ u Point on the southeast to Kaʻ ōʻ io Point on the north. Included within the district, south of North Koʻ olaupoko, are the largest windward towns of Kāneʻ ohe, Kailua, and Waimānalo.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01723",
+      "rank": 12,
+      "question": "What type of writing did both Richard Harding Davis and Harry Stephen Keeler write?",
+      "answer": "fiction",
+      "context": "Richard Harding Davis\nRichard Harding Davis (April 18, 1864 – April 11, 1916) was an American journalist and writer of fiction and drama, known foremost as the first American war correspondent to cover the Spanish–American War, the Second Boer War, and the First World War. His writing greatly assisted the political career of Theodore Roosevelt and he also played a major role in the evolution of the American magazine. His influence extended to the world of fashion and he is credited with making the clean-shaven look popular among men at the turn of the 20th century.\n\nHarry Stephen Keeler\nHarry Stephen Keeler (November 3, 1890 – January 22, 1967) was a prolific but little-known American author of mysteries and science fiction.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-01770",
+      "rank": 13,
+      "question": "which Soviet Russian cellist.did Anton Ginsburg work best known as accompany",
+      "answer": "Daniil Shafran",
+      "context": "Anton Ginsburg\nAnton Ginsburg (18 September 1930 – 19 July 2002) was a Russian pianist. He was born in Moscow. A disciple of Heinrich Neuhaus, he graduated from the Moscow Conservatory in 1953. Four years later he won the Smetana Competition in Prague. Ginsburg has been active as a concert pianist both in the USSR and abroad, but is best remembered for his work as an accompanist with Daniil Shafran.\n\nDaniil Shafran\nDaniil Borisovich Shafran (Russian: Даниил Борисович Шафран , January 13, 1923February 7, 1997) was a Soviet Russian cellist.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02040",
+      "rank": 14,
+      "question": "Charles Coughlin was a controversial Canadian-American Roman Catholic who also started what rumor?",
+      "answer": "Boston Herald",
+      "context": "Charles Coughlin\nCharles Edward Coughlin ( ; October 25, 1891 – October 27, 1979), was a controversial Canadian-American Roman Catholic priest based in the United States near Detroit at Royal Oak, Michigan's National Shrine of the Little Flower church. Commonly known as Father Coughlin, he was one of the first political leaders to use radio to reach a mass audience, as up to thirty million listeners tuned to his weekly broadcasts during the 1930s. He was forced off the air in 1939.\n\nFrances Sweeney\nFrances Sweeney (c. 1908 – June 19, 1944) was a journalist and activist who campaigned against fascism, antisemitism, and political corruption in 1940s Boston. She edited her own newspaper, the \"Boston City Reporter\", and started the \"Boston Herald\" Rumor Clinic to combat fascist disinformation. Seeking to counteract the influence of the priest Charles Coughlin, whose antisemitic broadcasts were popular with Boston's Irish Catholics, she led protests and wrote editorials condemning the Christian Front and similar organizations. She was secretary of the American-Irish Defense Association of Boston and vice chairman of the Massachusetts Citizens' Committee for Racial Unity. A Catholic herself, Sweeney was threatened with excommunication when she criticized Cardinal O'Connell for his silence on Catholic antisemitism.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02221",
+      "rank": 15,
+      "question": "The Wright Model B was an early pusher biplane designed by what inventors and aviation pioneers who are credited with building the world's first successful airplane?",
+      "answer": "Wright brothers",
+      "context": "Wright brothers\nThe Wright brothers, Orville (August 19, 1871 – January 30, 1948) and Wilbur (April 16, 1867 – May 30, 1912), were two American brothers, inventors, and aviation pioneers who are generally credited with inventing, building, and flying the world's first successful airplane. They made the first controlled, sustained flight of a powered, heavier-than-air aircraft on December 17, 1903, four miles south of Kitty Hawk, North Carolina. In 1904–05 the brothers developed their flying machine into the first practical fixed-wing aircraft. Although not the first to build and fly experimental aircraft, the Wright brothers were the first to invent aircraft controls that made fixed-wing powered flight possible.\n\nWright Model B\nThe Wright Model B was an early pusher biplane designed by the Wright brothers in the United States in 1910. It was the first of their designs to be built in quantity. Unlike the Model A, it featured a true elevator carried at the tail rather than at the front. It was the last Wright model to have an open-frame tail. The Model B was a dedicated two-seater with the pilot and a passenger sitting side-by-side on the leading edge of the lower wing.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02351",
+      "rank": 16,
+      "question": "Which filmmaker, Stan Brakhage or Alfred L. Werker, was a non-narrative filmmaker?",
+      "answer": "James Stanley Brakhage",
+      "context": "Stan Brakhage\nJames Stanley Brakhage ( ; January 14, 1933 – March 9, 2003), better known as Stan Brakhage, was an American non-narrative filmmaker. He is considered to be one of the most important figures in 20th-century experimental film.\n\nAlfred L. Werker\nAlfred L. Werker (December 2, 1896 – July 28, 1975) was a film director whose work in movies spanned from 1917 through 1957. After a number of film production jobs and assistant directing, Werker co-directed his first film, \"Ridin' the Wind\" in 1925 alongside director Del Andrews. He was brought in by Fox Film Corporation executives to re-shoot and re-edit Erich von Stroheim's film \"Hello, Sister! \" (1933), co-starring Boots Mallory and ZaSu Pitts.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02376",
+      "rank": 17,
+      "question": "Mehdi Hashemi was thought to be guilty of opposition to the Iranian regime's dealings during what President's administration?",
+      "answer": "Reagan",
+      "context": "Iran–Contra affair\nThe Iran–Contra affair (Persian: ماجراي ایران-کنترا‎ ‎ , Spanish: \"caso Irán-Contra\" ), also referred to as Irangate, Contragate or the Iran–Contra scandal, was a political scandal in the United States that occurred during the second term of the Reagan Administration. Senior administration officials secretly facilitated the sale of arms to Iran, which was the subject of an arms embargo. They hoped, thereby, to fund the Contras in Nicaragua while at the same time negotiating the release of several U.S. hostages. Under the Boland Amendment, further funding of the Contras by the government had been prohibited by Congress.\n\nMehdi Hashemi\nMehdi Hashemi (1946 – 28 September 1987) was an Iranian Shi'a cleric who was defrocked by the Special Clerical Court. After the 1979 Iranian Revolution, he became a senior official in the Islamic Revolutionary Guards; he was executed by the Islamic Republic in its first decade. Officially he was guilty of sedition, murder, and related charges, but others suspect his true crime was opposition to the regime's secret dealings with the United States (see Iran–Contra affair).",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02393",
+      "rank": 18,
+      "question": "Julien Kang is the younger brother of the mixed martial artist of what nationality?",
+      "answer": "Canadian",
+      "context": "Denis Kang\nDenis Kang (Hangul: 강대수 , born September 17, 1977) is a Canadian professional mixed martial artist who most recently competed in the Middleweight division. A professional competitor since 1998, Kang has formerly competed for the UFC, PRIDE, DREAM, Impact FC, M-1 Global, K-1 HERO'S, ROAD FC, and Pancrase. In his prime he scored notable wins over, Pat Healy, Marvin Eastman, Akihiro Gono and Murilo Rua.\n\nJulien Kang\nJulien Kang (; born 11 April 1982) is a French television actor and model born in Saint Pierre and Miquelon, an overseas French territory off the coast of Canada, to a Korean father and a French mother. He is the younger brother of mixed martial artist Denis Kang.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02401",
+      "rank": 19,
+      "question": "What American indie rock group first had Jesse Sandoval as the drummer and now has Jon Sortland on drums?",
+      "answer": "The Shins",
+      "context": "The Shins\nThe Shins are an American indie rock band from Albuquerque, New Mexico, formed in 1996. The band's current lineup consists of James Mercer (vocals, guitar, songwriter), Jon Sortland (drums), Mark Watrous (guitar), Casey Foubert (guitar), Yuuki Matthews (bass), and Patti King (keyboards). The band is based in Portland, Oregon.\n\nJesse Sandoval\nJesse Sandoval is the former drummer of American indie rock group The Shins. Sandoval initially formed Flake with singer-songwriter James Mercer, guitarist Neal Langford and bassist Marty Crandall in Albuquerque, New Mexico in 1992. Sandoval and Mercer then went on to form The Shins as a side project, intending to play as a duo, but were eventually joined again by Marty Crandall on keyboard and Dave Hernandez on bass. Sandoval, along with other band members, now resides in Portland, Oregon.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02403",
+      "rank": 20,
+      "question": "Which industrialist established a museum in Heckscher Park that features \"First Friday\" concerts?",
+      "answer": "August Heckscher",
+      "context": "Heckscher Museum of Art\nThe Heckscher Museum of Art is located in scenic Heckscher Park, in Huntington, New York, within walking distance of downtown shops and award-winning restaurants. The Museum provides a dynamic schedule of changing exhibitions on American art. Additionally, public programs for adults, families, and children, include \"First Friday\" concert series, gallery talks, festivals and workshops.\n\nHeckscher Park (Huntington, New York)\nHeckscher Park is a local park and national historic district in Huntington, Suffolk County, New York. It is bounded by Madison Street, Sabbath Day Path, Main Street, and Prime Avenue. The park is roughly triangular-shaped with a large pond on northwest corner, and contains the Heckscher Museum of Art established by industrialist August Heckscher, as well as the Chapin Rainbow Theater. It hosts annual art festivals, tulip festivals, concerts, renaissance fairs, and the Huntington Summer Arts Festival. Heckscher Park was listed on the National Register of Historic Places in 1985.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02543",
+      "rank": 21,
+      "question": "The subject of McGinniss' 1983 book \"Fatal Vision\" was convicted of murder in what year?",
+      "answer": "1979",
+      "context": "The Journalist and the Murderer\nThe Journalist and the Murderer is a study by Janet Malcolm about the ethics of journalism, published by Alfred A. Knopf/Random House in 1990. It is an examination of the professional choices that shape a work of non-fiction, as well as a rumination on the morality that underpins the journalistic enterprise. The journalist in question is Joe McGinniss; the murderer is the former Special Forces captain Dr. Jeffrey R. MacDonald, who became the subject of McGinniss' 1983 book \"Fatal Vision\".\n\nJeffrey R. MacDonald\nJeffrey Robert MacDonald (born October 12, 1943) is an American medical doctor who was convicted in 1979 of murdering his pregnant wife and two daughters in February 1970.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02550",
+      "rank": 22,
+      "question": "Eddie Jemison had a role in the television series \"IZombie\", which premiered on what date?",
+      "answer": "March 17, 2015",
+      "context": "IZombie (TV series)\niZombie (stylized as iZOMBiE) is an American television series developed by Rob Thomas and Diane Ruggiero-Wright for The CW. It is a loose adaptation of the comic book series of the same name created by Chris Roberson and Michael Allred, and published by DC Comics under their Vertigo imprint. The series premiered on March 17, 2015.\n\nEddie Jemison\nEdward Francis \"Eddie\" Jemison, Jr. (born 1963) is an American film and television actor. He is known for his roles in the \"Ocean's Eleven\" trilogy and the television series \"Hung\" and IZombie.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02580",
+      "rank": 23,
+      "question": "Were both Terence Fisher and Leopoldo Torre Nilsson British film directors?",
+      "answer": "no",
+      "context": "Leopoldo Torre Nilsson\nLeopoldo Torre Nilsson (5 May 1924 – 8 September 1978), also known as Leo Towers and as Babsy, was an Argentine film director, producer and screenwriter.\n\nTerence Fisher\nTerence Fisher (23 February 1904 – 18 June 1980) was a British film director who worked for Hammer Films.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02622",
+      "rank": 24,
+      "question": "What is 3/4 of the budget of the agency who  placed ECT machines  in the Class III category coming from?",
+      "answer": "pharmaceutical companies",
+      "context": "Food and Drug Administration\nThe Food and Drug Administration (FDA or USFDA) is a federal agency of the United States Department of Health and Human Services, one of the United States federal executive departments. The FDA is responsible for protecting and promoting public health through the control and supervision of food safety, tobacco products, dietary supplements, prescription and over-the-counter pharmaceutical drugs (medications), vaccines, biopharmaceuticals, blood transfusions, medical devices, electromagnetic radiation emitting devices (ERED), cosmetics, animal foods & feed and veterinary products. As of 2017, 3/4th of the FDA budget (approximately $700 million) is funded by the pharmaceutical companies due to the Prescription Drug User Fee Act.\n\nElectroconvulsive therapy\nElectroconvulsive therapy (ECT), formerly known as electroshock therapy, and often referred to as shock treatment, is a psychiatric treatment in which seizures are electrically induced in patients to provide relief from mental disorders. The ECT procedure was first conducted in 1938 and is the only currently used form of shock therapy in psychiatry. ECT is often used with informed consent as a last line of intervention for major depressive disorder, mania, and catatonia. ECT machines have been placed in the Class III category (high risk) by the United States Food and Drug Administration (FDA) since 1976.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02692",
+      "rank": 25,
+      "question": "Loughborough Students' Union serves the students at what public research university that has been a university since 1966, but the institution dates back to 1909?",
+      "answer": "Loughborough University",
+      "context": "Loughborough Students' Union\nLoughborough Students' Union (otherwise known as LSU) is the students' union serving members from Loughborough University, Loughborough College and the RNIB College Loughborough.\n\nLoughborough University\nLoughborough University (abbreviated as Lough for post-nominals) is a public research university located in the market town of Loughborough, Leicestershire, in the East Midlands of England. It has been a university since 1966, but the institution dates back to 1909, when the then Loughborough Technical Institute began with a focus on skills and knowledge which would be directly applicable in the wider world. In March 2013, the university announced it had acquired the former broadcast centre at the Queen Elizabeth Olympic Park which opened as a second campus in 2015. It was a member of the 1994 Group until the group was dissolved in November 2013.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-02731",
+      "rank": 26,
+      "question": "Are Mobile Regional Airport and Hoonah Airport located in California?",
+      "answer": "no",
+      "context": "Hoonah Airport\nHoonah Airport (IATA: HNH, ICAO: PAOH, FAA LID: HNH) is a state-owned public-use airport located one nautical mile (2 km) southeast of the central business district of Hoonah, Alaska.\n\nMobile Regional Airport\nMobile Regional Airport (IATA: MOB, ICAO: KMOB, FAA LID: MOB) is a combined public/military airport 13 miles west of the city of Mobile, in Mobile County, Alabama. It is near Pascagoula, Mississippi. The airport is owned and operated by the Mobile Airport Authority,a self-funded entity that receives no local tax dollars.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03171",
+      "rank": 27,
+      "question": "Theme Park Inc is a video game that created what sequel in North America in 1999?",
+      "answer": "Sim Theme Park",
+      "context": "Theme Park Inc\nTheme Park Inc. (also known as SimCoaster in the United States and Theme Park Manager in Australia) is a construction and management simulation video game. It is the last game of the Theme Park series that started with \"Theme Park\" in 1994 and continued with \"Theme Park World\" in 1999. \"Theme Park Inc.\" was developed by Bullfrog Productions and published by Electronic Arts. It was the last game to bear the Bullfrog logo before the company's merger with EA UK in 2004.\n\nTheme Park World\nTheme Park World, also known as Theme Park 2, and in North America as Sim Theme Park, is a 1999 construction and management simulation game developed by Bullfrog Productions and released by Electronic Arts. The direct sequel to \"Theme Park\" (\"Theme Hospital\" and \"Theme Aquarium\" are thematic sequels), the player constructs and manages an amusement park with the aim of making profit and keeping visitors happy. Initially developed for Windows, it was ported to PlayStation and PlayStation 2 (whose version was titled Theme Park Roller Coaster in North America), as well for Macintosh computers. The Mac version was published by Feral Interactive.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03190",
+      "rank": 28,
+      "question": "Which is in the family Rutaceae, the Diplolaena or the Arenaria?",
+      "answer": "Diplolaena",
+      "context": "Arenaria (plant)\nArenaria is a genus of flowering plants, within the family Caryophyllaceae.\n\nDiplolaena\nDiplolaena is a genus of evergreen shrubs in the family Rutaceae . They are native to Western Australia.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03306",
+      "rank": 29,
+      "question": "Are Cardinal Health and Kansas City Southern located in the same state?",
+      "answer": "no",
+      "context": "Cardinal Health\nCardinal Health, Inc. is a Fortune 500 health care services company based in Dublin, Ohio. The company specializes in distribution of pharmaceuticals and medical products, serving more than 100,000 locations. The company also manufactures medical and surgical products, including gloves, surgical apparel and fluid management products. In addition, it operates the nation’s largest network of radiopharmacies. Cardinal Health provides medical products to over 75 percent of hospitals in the United States. In December 2013, it was announced that Cardinal Health would team up with CVS Caremark, which would form the largest generic drug sourcing operation in the United States. The venture was named Red Oak Sourcing and began operations in July 2014.\n\nKansas City Southern (company)\nHeadquartered in Kansas City, Missouri, Kansas City Southern (KCS) (NYSE: KSU) is a transportation holding company with railroad investments in the U.S., Mexico and Panama.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03344",
+      "rank": 30,
+      "question": "Where is the location of Liberty Square park in Disneyland California?",
+      "answer": "Anaheim",
+      "context": "Liberty Square (Magic Kingdom)\nLiberty Square is one of six \"themed lands\" and is exclusive to the Magic Kingdom, a theme park at the Walt Disney World Resort in Lake Buena Vista, Florida. Themed after colonial America, replicas of both the Liberty Bell and Liberty Tree can be seen here. One of the most popular attractions in the Magic Kingdom, the Haunted Mansion, is located in this land. Presiding over the square is the Hall of Presidents, an American history show featuring an audio-animatronic figure of every President of the United States. Liberty Square has a long waterfront on the Rivers of America and the \"Liberty Belle\" Riverboat steam paddleboat departs from a landing here. The land affords excellent views of the river and Tom Sawyer Island in adjacent Frontierland.\n\nMark Twain Riverboat\n\"Mark Twain\" Riverboat is an attraction, located at the Disneyland theme park in Anaheim, California, on which passengers embark on a scenic, 12-minute journey around the Rivers of America. Originally named \"Mark Twain\" Steamboat when the park opened in 1955, the stately, 5/8-scale stern-wheeler was the first functional riverboat to be built in the United States for fifty years. Other Disney riverboat attractions now appear at Walt Disney World, Tokyo Disneyland and Disneyland Paris.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03349",
+      "rank": 31,
+      "question": "Is Velvetpark or Shape magazine written more for a lesbian and queer-identified female readership?",
+      "answer": "Velvetpark",
+      "context": "Velvetpark\nVelvetpark: Dyke Culture in Bloom is a lesbian and feminist arts and culture website that regularly features music, literature, theater, fine arts, film, television, and social activism as it impacts queer culture. \"Velvetpark\" also hosts a social network and dating community for lesbians and queer-identified women.\n\nShape (magazine)\nShape is a monthly English language fitness magazine started by Weider Publications in 1981, founded by Christine MacIntyre (a pioneer in women's free weight fitness) and became the number one women's fitness magazine. At that time, Weider Enterprises consisted primarily of the bodybuilding magazine \"Muscle & Fitness\". Joe Weider and Christine MacIntyre had differing views of how to present \"Shape\", Weider endorsing a less journalistic and more commercial approach to articles, MacIntyre endorsing a more academic, doctor-based magazine. Weider also endorsed a sexier approach to editorial while MacIntyre endorsed a healthier look for women, eschewing sexiness in the models and the copy. MacIntyre largely won that battle, editing a magazine that required that every byline have an advanced medical degree, that cover models should look healthy rather than sexy, and that sexist language be avoided. Christine MacIntyre was the editor-in-chief until her death in 1988. Tara Kraft is the current editor-in-chief. \"Shape\" found a readership based on that formula.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03392",
+      "rank": 32,
+      "question": "What movie studio produced The Benchwarmers, which starred Rob Schneider and Napoleon Dynamites lead actor, Jon Heder?",
+      "answer": "Revolution Studios",
+      "context": "The Benchwarmers\nThe Benchwarmers is a 2006 American sports-comedy film directed by Dennis Dugan. It stars Rob Schneider, David Spade, and Jon Heder. It is produced by Revolution Studios and Happy Madison Productions and is distributed by Columbia Pictures.\n\nJon Heder\nJonathan Joseph \"Jon\" Heder ( ) (born October 26, 1977) is an American actor and producer. His feature film debut came in 2004 as the title character of the comedy film \"Napoleon Dynamite\". He has also acted in the films \"The Benchwarmers\", \"School for Scoundrels\", \"Blades of Glory\", \"Mama's Boy\", \"When in Rome\", and \"Walt Before Mickey\" as Roy Disney, and provided voice talents in the animated films \"Monster House\" and \"Surf's Up\", as well as the \"Napoleon Dynamite\" animated series.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03393",
+      "rank": 33,
+      "question": "What kind of musician does Robert Plant discography and John Bonham have in common?",
+      "answer": "drummer",
+      "context": "John Bonham\nJohn Henry Bonham (31 May 1948 – 25 September 1980) was an English musician and songwriter, best known as the drummer for the British rock band Led Zeppelin. Bonham was esteemed for his speed, power, fast bass-drumming, distinctive sound, and \"feel\" for the groove. He is considered one of the greatest rock drummers.\n\nRobert Plant discography\nAfter the breakup of Led Zeppelin in 1980 (following the death of John Bonham), Robert Plant pursued a successful solo career comprising eleven studio albums, two compilation albums, three video albums, four collaborative albums and 42 singles. He began his solo career with \"Pictures at Eleven\" in 1982, followed by 1983's \"The Principle of Moments\". Popular tracks from this period include \"Big Log\" (a Top 20 hit in 1983), \"In the Mood\" (1984), \"Little by Little\" (from 1985's \"Shaken 'n' Stirred\"), \"Tall Cool One\" (a #25 hit off 1988's \"Now and Zen\"), \"Manic Nirvana\"'s \"Hurting Kind (I've Got My Eyes on You)\" (1990), and \"I Believe\" (from 1993's \"Fate of Nations\"), another song written for and dedicated to his late son, Karac. In 1984, Plant formed a short-lived all-star group with Jimmy Page and Jeff Beck called the Honeydrippers, who had a #3 hit with a remake of the Phil Phillips' tune, \"Sea of Love\" and a follow-up hit with a cover of Roy Brown's \"Rockin' at Midnight.\" Although Plant avoided performing Led Zeppelin songs through much of this period, his tours in 1983 (with drummer Phil Collins) and 1985 were very successful, often performing to sold-out arena-sized venues.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03508",
+      "rank": 34,
+      "question": "Where is the origin of Tie Domi who was a player for the Maple Leafs?",
+      "answer": "Albanian origin",
+      "context": "Tie Domi\nTahir \"Tie\" Domi (born November 1, 1969) is a retired Canadian professional ice hockey player of Albanian origin. Known for his role as an enforcer, he played for the Toronto Maple Leafs, New York Rangers and Winnipeg Jets over a sixteen-year NHL career. He has more penalty minutes than any other player in the history of the Maple Leafs (see Maple Leafs records) and third overall in penalty minutes in NHL history.\n\nOntario Raiders\nThe Ontario Raiders were a member of the National Lacrosse League during the 1998 NLL season. The franchise was founded as an expansion team in Hamilton, Ontario, and played their home games at Copps Coliseum. Former Buffalo Bandits coach Les Bartley was hired to coach the new team, and he lured former Bandit Jim Veltman to join him, becoming the Raiders' captain. The team finished a respectable 6-6 in their inaugural season, but missed the playoffs on a tie-breaker. Following the season, losses of $250,000 forced owner Chris Fritz to look for partners. Maple Leaf Sports & Entertainment considered purchasing the team, but ultimately a group which included Bill Watters, the then Assistant General Manager of the Toronto Maple Leafs, Paul Beeston, former president of the Toronto Blue Jays, Tie Domi, player for the Maple Leafs, and Bobby Orr, former NHL player, bought it for $250,000 and promptly relocated the team to Toronto's Maple Leaf Gardens where they rebranded it the Toronto Rock.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03522",
+      "rank": 35,
+      "question": "Who is older Danny Green or James Worthy?",
+      "answer": "James Worthy",
+      "context": "Danny Green (basketball)\nDaniel Richard \"Danny\" Green, Jr. (born June 22, 1987) is an American professional basketball player for the San Antonio Spurs of the National Basketball Association (NBA). He was a swingman from the University of North Carolina, where he played in more games (145) and had more wins (123) than any Tar Heel before him. Green is also the only player in the history of the Atlantic Coast Conference (ACC) with at least 1,000 points, 500 rebounds, 250 assists, 150 three-pointers, 150 blocks and 150 steals. He won an NCAA championship his senior year and was subsequently drafted by the Cleveland Cavaliers with the 46th overall pick in the 2009 NBA draft. During the 2013 NBA Finals, Green set an NBA record for most three-point field goals made in a Finals series. He then won an NBA championship with the San Antonio Spurs the following season, and became just the third player from UNC to win an NCAA championship and an NBA championship, the two others being James Worthy, and Michael Jordan. Known for his perimeter defense and three-point shooting, Green has been a key contributor on both ends on the floor throughout his NBA career, having been selected to his first NBA All-Defensive Second Team in the 2016-17 NBA season.\n\nJames Worthy\nJames Ager Worthy (born February 27, 1961) is an American professional basketball coach and former player, commentator, television host, and analyst. He serves as an assistant coach for the Los Angeles Lakers of the National Basketball Association (NBA).",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03527",
+      "rank": 36,
+      "question": "The title of this Swedish-French crime television series in English refers to a natural phenomenon where the sun remains visible for what?",
+      "answer": "the full 24 hours",
+      "context": "Midnight sun\nThe midnight sun is a natural phenomenon that occurs in the summer months in places north of the Arctic Circle or south of the Antarctic Circle, when the sun remains visible at the local midnight. Around the summer solstice (approximately 21 June in the Northern Hemisphere and 22 December in the Southern Hemisphere) the sun is visible for the full 24 hours, given fair weather. The number of days per year with potential midnight sun increases the closer towards either pole one goes. Although approximately defined by the polar circles, in practice the midnight sun can be seen as much as 55 miles (90 km) outside the polar circle, as described below, and the exact latitudes of the farthest reaches of midnight sun depend on topography and vary slightly year-to-year.\n\nMidnattssol\nMidnattssol (French: \"Jour polaire\" , English: Midnight sun ) is a Swedish-French crime television series from 2016. It started airing on SVT on 23 October 2016.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03535",
+      "rank": 37,
+      "question": "What professional footballer who plays for Championship side Cardiff City was part of the 2009 Houphouët-Boigny stampede?",
+      "answer": "Souleymane \"Sol\" Bamba",
+      "context": "Sol Bamba\nSouleymane \"Sol\" Bamba (born 13 January 1985) is a professional footballer who plays for Championship side Cardiff City and the Ivory Coast national team as a centre-back.\n\n2009 Houphouët-Boigny stampede\nThe 2009 Houphouët-Boigny stampede occurred on 29 March 2009 in the Stade Félix Houphouët-Boigny in Abidjan, Côte d'Ivoire before a 2010 FIFA World Cup qualification match between Malawi and Côte d'Ivoire. Nineteen people were killed and 135 were injured. In an attempt to control a stampede police fired tear gas into the crowds, who had begun jostling with each other at least 40 minutes before kick off. The match was particularly popular among locals, with world stars such as Didier Drogba, Sol Bamba and Salomon Kalou due to play for Côte d'Ivoire.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03578",
+      "rank": 38,
+      "question": "What novella was the basis of the movie that featured the song \"Wien, du Stadt meiner Träume\" by Rudolf Sieczyński?",
+      "answer": "Traumnovelle",
+      "context": "Eyes Wide Shut\nEyes Wide Shut is a 1999 erotic drama film directed, produced, and co-written by Stanley Kubrick. Based on Arthur Schnitzler's 1926 novella \"Traumnovelle\" (\"Dream Story\"), the story is transferred from early 20th century Vienna to 1990s New York City. The film follows the sexually-charged adventures of Dr. Bill Harford, who is shocked when his wife, Alice, reveals that she had contemplated having an affair a year earlier. He embarks on a night-long adventure, during which he infiltrates a massive masked orgy of an unnamed secret society.\n\nRudolf Sieczyński\nRudolf Sieczyński (1879, Vienna – 1952, Vienna) was an Austrian composer of Polish ancestry. His fame today rests almost exclusively on the nostalgic Viennese song \"Wien, du Stadt meiner Träume\" (\"Vienna, City of My Dreams\"), whose melody and lyrics he wrote in 1914. A well-known recording was made in 1957 by Elisabeth Schwarzkopf with Otto Ackermann conducting the Philharmonia Orchestra. The song was featured in the soundtrack of the Stanley Kubrick film \"Eyes Wide Shut\".",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03761",
+      "rank": 39,
+      "question": "Which of Mabel Keyes Babcock's distant relatives wrote \"Of Plymouth Plantation\" and served as Governor of the Plymouth Colony?",
+      "answer": "William Bradford",
+      "context": "Mabel Keyes Babcock\nBorn in Somerville, Massachusetts, on May 20, 1862, Mabel Keyes Babcock was the daughter of botanist Henry H. Babcock and Mary Porter (Keyes) Babcock. She was a descendant of William Bradford, the governor of Plymouth Colony. Both of her parents were involved in education: Henry was for a time the principal of Somerville High School in Massachusetts, while Mary, after Henry died, became the headmistress of Kenilworth Hall, a girls' school in the Chicago area.\n\nWilliam Bradford (Plymouth Colony governor)\nWilliam Bradford ( 19 March 1590May 9, 1657) was an English Separatist originally from the West Riding of Yorkshire. He moved to Leiden in Holland in order to escape persecution from King James I of England, and then emigrated to the Plymouth Colony on the \"Mayflower\" in 1620. He was a signatory to the Mayflower Compact and went on to serve as Governor of the Plymouth Colony intermittently for about 30 years between 1621 and 1657. His journal \"Of Plymouth Plantation\" covered the years from 1620 to 1657 in Plymouth.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-03928",
+      "rank": 40,
+      "question": "In what country did Petrus van Hooijdonk compete in for the 1998 FIFA World Cup?",
+      "answer": "It was held in France from 10 June to 12 July 1998.",
+      "context": "1998 FIFA World Cup\nThe 1998 FIFA World Cup was the 16th FIFA World Cup, the world championship for men's national association football teams. It was held in France from 10 June to 12 July 1998. The country was chosen as the host nation by FIFA for the second time in the history of the tournament, defeating Morocco in the bidding process. It was the second time that France staged the competition (the first was in 1938), and the ninth time that it was held in Europe.\n\nPierre van Hooijdonk\nPetrus Ferdinandus Johannes \"Pierre\" van Hooijdonk (] ; born 29 November 1969) is a retired Dutch international footballer who played as a striker. He had spells with clubs across Europe where he was a prolific goal scorer. Van Hooijdonk was capped 46 times for the Dutch national team for whom he scored 14 goals, and played in the 1998 FIFA World Cup, Euro 2000 and Euro 2004. He was also noted for his spectacular free kicks.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04095",
+      "rank": 41,
+      "question": "\"It's Me That You Need\" is a song with lyrics written by Bernie Taupin and which artist whose career spans five decades?",
+      "answer": "Elton John",
+      "context": "Elton John\nSir Elton Hercules John, (born Reginald Kenneth Dwight; 25 March 1947), is an English singer, pianist, and composer. He has worked with lyricist Bernie Taupin as his songwriting partner since 1967; they have collaborated on more than 30 albums to date. In his five-decade career Elton John has sold more than 300million records, making him one of the best-selling music artists in the world. He has more than fifty Top 40 hits, including seven consecutive No. 1 US albums, 58 \"Billboard\" Top 40 singles, 27 Top 10, four No. 2 and nine No. 1. For 31 consecutive years (1970–2000) he had at least one song in the \"Billboard\" Hot 100. His tribute single, re-penned in dedication to the late Princess Diana, \"Candle in the Wind 1997\" sold over 33million copies worldwide and is the best-selling single in the history of the UK and US singles charts. He has also composed music, produced records, and has occasionally acted in films. John owned Watford Football Club from 1976 to 1987, and 1997 to 2002. He is an honorary Life President of the club, and in 2014 had a stand named after him at the club's home stadium.\n\nIt's Me That You Need\n\"It's Me That You Need\" is a song by Elton John with lyrics by Bernie Taupin.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04225",
+      "rank": 42,
+      "question": "Was either Craig Melville or Grover Jones born in Indiana?",
+      "answer": "Jones was born in Rosedale, Indiana",
+      "context": "Craig Melville\nCraig James Melville is an Australian television comedy director. He is best known for his collaborations with comedians John Safran, Lawrence Leung and The Chaser.\n\nGrover Jones\nGrover Jones (November 15, 1893 – September 24, 1940) was an American screenwriter - often teamed with William Slavens McNutt - and film director. He wrote more than 104 films between 1920 and his death. He also was a film journal publisher and prolific short story writer. Jones was born in Rosedale, Indiana, grew up in West Terre Haute, Indiana, and died in Hollywood, California.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04280",
+      "rank": 43,
+      "question": "What kind of song did Alexander Grant produce for Eminem?",
+      "answer": "a midtempo hip hop ballad",
+      "context": "Love the Way You Lie\n\"Love the Way You Lie\" is a song recorded by the American rapper Eminem, featuring the Barbadian singer Rihanna, from Eminem's seventh studio album \"Recovery\" (2010). The singer and songwriter Skylar Grey wrote and recorded a demo of the song alongside the producer Alex da Kid when she felt she was in an abusive romantic relationship with the music industry. Eminem wrote the verses and chose Rihanna to sing the chorus, resulting in a collaboration influenced by their past experiences in difficult relationships. Recording sessions were held in Ferndale, Michigan, and Dublin, Ireland. Backed by guitar, piano and violin, the track is a midtempo hip hop ballad with a pop refrain, sung by Rihanna, and describes two lovers who refuse to separate despite being in a dangerous love–hate relationship.\n\nAlex da Kid\nAlexander Grant (born 27 August 1982), professionally known as Alex da Kid, is a British music producer from Wood Green, London. He has gained recognition for producing several hit singles for a plethora of artists in various music genres, such as Dr. Dre (\"I Need a Doctor\"), Nicki Minaj (\"Massive Attack\"), B.o.B (\"Airplanes\" featuring Hayley Williams), Eminem (\"Love the Way You Lie\" featuring Rihanna), Diddy (\"Coming Home\" with Dirty Money featuring Skylar Grey), Imagine Dragons (\"Radioactive\") and Cheryl (\"Under The Sun\").",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04290",
+      "rank": 44,
+      "question": "What is the nationality of the actor who costarred with Joe Chen and Jia Nailiang in \"Destined to Love You\"?",
+      "answer": "Hong Kong",
+      "context": "Destined to Love You\nDestined to Love You (Chinese: 偏偏喜欢你) is a 2015 Chinese television series created by Tong Hua and starring Joe Chen, Jia Nailiang and Bosco Wong with a special appearance by Zheng Shuang. It aired on Hunan TV from 16 June to 11 July 2015.\n\nBosco Wong\nBosco Wong Chung-chak (, born 13 December 1980) is a Hong Kong actor under TVB management and singer under East Asia Music.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04325",
+      "rank": 45,
+      "question": "What is the estimated population of the city in which the suburb of Beaumont is located ?",
+      "answer": "44,300",
+      "context": "Beaumont, South Australia\nBeaumont is a suburb of Adelaide in the City of Burnside. Founded as a purpose-built village by Sir Samuel Davenport in 1848, it initially struggled due to high land prices in the area. However, with Adelaide's inevitable expansion residents eventually settled. The early village had quite a cosmopolitan flavour–although predominantly Anglo-Saxon like most of Australia at this point, many of Beaumont's early residents were veterans of the British Navy or Army or had lived in other countries for some time.\n\nCity of Burnside\nThe City of Burnside is a local government area with an estimated population of 44,300 people in the South Australian city of Adelaide. Burnside was founded in August 1856 as the District Council of Burnside, and was classed as a city in 1943. It is named after the property of an early settler and stretches from the Adelaide Parklands into the Adelaide foothills. It is bounded by Adelaide, Adelaide Hills Council, Campbelltown, Mitcham, Norwood Payneham and St Peters and Unley. The city has an area of 27.53 km².",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04469",
+      "rank": 46,
+      "question": "Are The Limousines and Faith No More from the same state?",
+      "answer": "yes",
+      "context": "Faith No More\nFaith No More (sometimes abbreviated as FNM) is an American rock band from San Francisco, California, formed in 1979. Before settling on their current name in 1982, the band performed under the names Sharp Young Men and later Faith No Man. Bassist Billy Gould and drummer Mike Bordin are the longest remaining members of the band, having been involved with Faith No More since its inception. The band underwent several lineup changes early in their career, along with some major changes later on. The current lineup of Faith No More consists of Gould, Bordin, keyboardist Roddy Bottum, guitarist Jon Hudson and vocalist Mike Patton.\n\nThe Limousines\nThe Limousines are an American indietronica band based out of California's San Francisco Bay Area. Made up of multi-instrumentalist/producer Giovanni Giusti and",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04531",
+      "rank": 47,
+      "question": "The water-based dark ride in Walt Disney is connected to a song known for what?",
+      "answer": "most performed song of all time",
+      "context": "It's a Small World\nIt's a Small World (currently styled it's a small world) is a water-based dark ride located in the Fantasyland area at the various Walt Disney Parks and Resorts worldwide; these include: Disneyland Park in Anaheim, California, the Magic Kingdom at Walt Disney World Resort in Lake Buena Vista, Florida, Tokyo Disneyland, Disneyland Paris, and Hong Kong Disneyland. The ride features over 300 audio-animatronic children in traditional costumes from cultures around the world, frolicking in a spirit of international unity, and singing the attraction's title song, which has a theme of global peace.\n\nRobert B. Sherman\nRobert Bernard Sherman (December 19, 1925 – March 6, 2012) was an American songwriter who specialized in musical films with his brother Richard Morton Sherman. According to the official Walt Disney Company website and independent fact checkers, \"the Sherman Brothers were responsible for more motion picture musical song scores than any other songwriting team in film history.\" Some of the Sherman Brothers' best known songs were incorporated into live action and animation musical films including: \"Mary Poppins\", \"The Jungle Book\", \"The Many Adventures of Winnie the Pooh\", \"Chitty Chitty Bang Bang\", \"The Slipper and the Rose\", and \"Charlotte's Web\". Their most well known work, however, remains the theme park song \"It's a Small World (After All)\". According to Time.com, this song is the most performed song of all time.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04668",
+      "rank": 48,
+      "question": "Tom Araya and Marcus Mumford were both what?",
+      "answer": "musician",
+      "context": "Marcus Mumford\nMarcus Oliver Johnstone Mumford (born 31 January 1987) is a British-American singer, songwriter, musician and producer best known as the lead singer of the band Mumford & Sons. He also plays a number of instruments with the group, including guitar, drums and mandolin.\n\nTom Araya\nTomás Enrique Araya Díaz (born June 6, 1961) is a Chilean American musician, best known as the vocalist and bassist of the American thrash metal band Slayer. Araya is ranked fifty-eighth by \"Hit Parader\" on their list of the 100 Greatest Metal Vocalists of All Time.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04729",
+      "rank": 49,
+      "question": "Which plant, the Chaerophyllum or the Cryptanthus, can be found in various places across the world?",
+      "answer": "Chaerophyllum",
+      "context": "Chaerophyllum\nChaerophyllum is a genus of flowering plant in the Apiaceae, with 35 species native to Europe, Asia, North America, and northern Africa. It includes the cultivated root vegetable \"Chaerophyllum bulbosum\" (turnip rooted chervil).\n\nCryptanthus\nCryptanthus is a genus in the botanical family Bromeliaceae, subfamily Bromelioideae. The genus name is from the Greek “cryptos” (hidden) and “anthos” (flower). This genus has two recognized subgenera: the type subgenus and \"Hoplocryptanthus\" . All species of this genus are endemic to Brazil. The common name for any \"Cryptanthus\" is \"Earth Star\".",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04750",
+      "rank": 50,
+      "question": "What team is coached by former head college coach Connie Yori?",
+      "answer": "Nebraska Cornhuskers women's basketball",
+      "context": "Connie Yori\nConnie Yori (born October 3, 1963) is the former head coach of the Nebraska Cornhuskers women's basketball team representing the University of Nebraska in NCAA Division I competition. She formerly coached Loras College (a Division III school) from 1990–92 and Creighton from 1992–2002. In 2009–10, Yori was named the Naismith College Coach of the Year, AP College Basketball Coach of the Year and the Women's Basketball Coaches Association Coach of the Year after guiding Nebraska to a 32–2 record and the school's first-ever trip to the NCAA Women's Division I Basketball Championship Sweet 16.\n\nNebraska Cornhuskers women's basketball\nThe Nebraska Cornhuskers represent the University of Nebraska–Lincoln in women's college basketball.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04777",
+      "rank": 51,
+      "question": "Reinhold O. Schmidt was a UFO contactee in the same era as which Polish-American citizen?",
+      "answer": "George Adamski",
+      "context": "George Adamski\nGeorge Adamski (17 April 1891 – 23 April 1965) was a Polish American citizen who became widely known in ufology circles, and to some degree in popular culture, after he claimed to have photographed spaceships from other planets, met with friendly Nordic alien Space Brothers, and to have taken flights with them to the Moon and other planets.\n\nReinhold O. Schmidt\nReinhold Schmidt (1897–1974) was a 1957 UFO \"contactee\" in an era that began with George Adamski in 1953. Schmidt was born and grew up in Nebraska, where he worked for most of his adult life as a reputable grain buyer and dealer. He became a contactee after telling of his experience on November 5, 1957 detailed in his book Edge of Tomorrow, when while driving through a rural area near Kearney, Nebraska, he noticed a large, cigar-shaped object resting in a field. He was soon escorted inside the space ship, which turned out to be crewed by completely human-looking space aliens, four male and two female, who apparently spoke perfect German and claimed to be from the planet Saturn. \"The Saturnians\" also claimed to be interested in the recently launched Russian sputniks, and the satellite-launching plans of the US.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04796",
+      "rank": 52,
+      "question": "Which of the starting pitchers for Team USA in the Baseball at the 2000 Summer Olympics was not born August 29, 1977?",
+      "answer": "Ben Sheets",
+      "context": "Roy Oswalt\nRoy Edward Oswalt ( ; born August 29, 1977) is an American former professional baseball pitcher who played for the majority of his career with the Houston Astros. He also played for the Philadelphia Phillies, the Texas Rangers, and the Colorado Rockies.\n\nBaseball at the 2000 Summer Olympics\nBaseball at the 2000 Summer Olympics was the third time an Olympic baseball tournament had been held as a full medal sport, and the ninth time it had been part of the Summer Olympic Games in any capacity. It was held in Sydney, Australia from 17 September through to the bronze and gold medal games on 27 September. Two venues were used for the Games: the Sydney Baseball Stadium and Blacktown Olympic Park. For the first time in Olympic competition, professional baseball players were eligible to participate, though no active players from Major League Baseball were available. Team USA, however, included Pat Borders, who had won World Series MVP with the Toronto Blue Jays in 1992, starting pitchers Roy Oswalt and Ben Sheets, who became MLB aces with the Houston Astros and Milwaukee Brewers respectively, and first baseman Doug Mientkiewicz, who won a World Series in 2004 with the Boston Red Sox. Last but not least, their manager was Tommy Lasorda, the Los Angeles Dodgers legend who had managed the Dodgers to two World Series in 1981 and 1988.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04860",
+      "rank": 53,
+      "question": "Lenroy Thomas is the current commonwealth heavyweight champion after beating a British , professional boxer who has a record of 12 wins, 3 defeats, and how many draws?",
+      "answer": "1",
+      "context": "Dave Allen (boxer)\nDavid Allen (born 21 March 1992) is British professional boxer. He has fought 16 times and his record stands at 12 wins, 3 defeats and 1 draw. In 2016 he took on Dillian Whyte and Luis Ortiz, two of the well known names in heavyweight boxing. On May 27, 2017, Allen took on Jamaica's Lenroy Thomas for the Commonwealth title. Allen lost on a split decision with close scorecards reading 115-114, 114-115, 115-114 in favour of Thomas.\n\nLenroy Thomas\nLenroy Thomas (born 13 March 1985) is a Jamaican professional boxer. He is the current commonwealth heavyweight champion after beating Dave Allen via a split decision victory.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-04897",
+      "rank": 54,
+      "question": "The Feminine Touch is a drama film starring which English actress?",
+      "answer": "Delphi Lawrence",
+      "context": "Delphi Lawrence\nDelphi Lawrence (23 March 1932 – 11 April 2002) was an English actress.\n\nThe Feminine Touch (1956 film)\nThe Feminine Touch is a 1956 British drama film directed by Pat Jackson and starring George Baker, Belinda Lee and Delphi Lawrence. The film is based on the bestselling novel \"A Lamp Is Heavy\" by Canadian former nurse Sheila Mackay Russell, and consequently it was released as A Lamp Is Heavy in Canada, while it was given the title The Gentle Touch in the United States, when it was released there in December 1957.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05006",
+      "rank": 55,
+      "question": "What distinguishes the footwear brand referenced in the album Pork Soda?",
+      "answer": "its air-cushioned sole (dubbed \"Bouncing Soles\"), upper shape, welted construction and yellow stitching",
+      "context": "Dr. Martens\nDr. Martens is a British footwear and clothing brand, which also makes a range of accessories – shoe care products, clothing, luggage, etc. In addition to Dr. Martens, they are also commonly known as Doctor Martens, Doc Martens, or Docs. The footwear is distinguished by its air-cushioned sole (dubbed \"Bouncing Soles\"), upper shape, welted construction and yellow stitching. The boots have been the choice of footwear among various groups in British culture: in the 1960s skinheads started to wear them, \"Docs\", being the usual naming, and by the late 1980s, they were popular among scooter riders, punks, some new wave musicians, and members of other youth subcultures.\n\nPork Soda\nPork Soda is the third studio album by the American rock band Primus, released April 20, 1993, certified Gold in September 1993 and certified Platinum in May 1997. The album comes in a digipak and contains a booklet with lyrics printed to nine songs, omitting \"Pork Soda\" which consists of a series of unintelligible rants. This is also the first of three Primus releases to feature explicit lyrics printed for any of their songs. Pop culture references abound on the album, including Hank Williams Jr., Cher, Pink Floyd, the Residents, Jerry Garcia, Jimi Hendrix, James Brown, Macbeth, Costco, Dr. Martens, \"Bottom\" and Ren & Stimpy.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05011",
+      "rank": 56,
+      "question": "Who was one of the star in the South Korean horror romantic comedy film of Hwang In-ho?",
+      "answer": "Son Ye-jin",
+      "context": "Spellbound (2011 film)\nSpellbound (; lit. \"Chilling Romance\") is a 2011 South Korean horror romantic comedy film, starring Son Ye-jin and Lee Min-ki. It is about a magician who falls in love with a woman who can see ghosts. It was written and directed by Hwang In-ho which also marks his directorial debut.\n\nHwang In-ho\nHwang In-ho is a South Korean film director and screenwriter. He wrote and directed the horror-romantic comedy \"Spellbound\" (2011) and the crime thriller \"Monster\" (2014).",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05170",
+      "rank": 57,
+      "question": "What was the specialization of an American naval officer who led the aircraft of the United States Antarctic Service to photograph Cox Point?",
+      "answer": "feats of exploration",
+      "context": "Richard E. Byrd\nRear Admiral Richard Evelyn Byrd Jr., USN (October 25, 1888 – March 11, 1957) was an American naval officer who specialized in feats of exploration. He was a recipient of the Medal of Honor, the highest honor for valor given by the United States, and was a pioneering American aviator, polar explorer, and organizer of polar logistics. Aircraft flights in which he served as a navigator and expedition leader crossed the Atlantic Ocean, a segment of the Arctic Ocean, and a segment of the Antarctic Plateau. Byrd claimed that his expeditions had been the first to reach both the North Pole and the South Pole by air. However, his claim to have reached the North Pole is disputed.\n\nCox Point\nCox Point ( ) is a rock headland at the southwest side of the terminus of Garfield Glacier where the latter discharges into Hull Bay, on the coast of Marie Byrd Land. The point was first observed and photographed from aircraft of the United States Antarctic Service, 1939–41, led by Admiral Richard E. Byrd. It was named by the Advisory Committee on Antarctic Names for E.F. Cox, a carpenter of the Byrd Antarctic Expedition, 1933–35.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05264",
+      "rank": 58,
+      "question": "The Battle of Nanchang was fought between the Chinese Nationals and what ground-based armed force of Japan?",
+      "answer": "Imperial Japanese Army",
+      "context": "Battle of Nanchang\nThe Battle of Nanchang () was a major battle between the Chinese National Revolutionary Army and the Japanese Imperial Japanese Army in the Second Sino-Japanese War. It was the first major conflict to occur following the Battle of Wuhan.\n\nImperial Japanese Army\nThe Imperial Japanese Army (IJA; 大日本帝國陸軍 \"Dai-Nippon Teikoku Rikugun\"; \"Army of the Greater Japanese Empire\") was the official ground-based armed force of the Empire of Japan from 1868 to 1945. It was controlled by the Imperial Japanese Army General Staff Office and the Ministry of War, both of which were nominally subordinate to the Emperor of Japan as supreme commander of the army and the navy. Later an Inspectorate General of Aviation became the third agency with oversight of the army. During wartime or national emergencies, the nominal command functions of the emperor would be centralized in an Imperial General Headquarters (IGHQ), an ad-hoc body consisting of the chief and vice chief of the Army General Staff, the Minister of War, the chief and vice chief of the Naval General Staff, the Inspector General of Aviation, and the Inspector General of Military Training.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05363",
+      "rank": 59,
+      "question": "New Jersey politicians Linda Stender and Leonard Lance were born within a year of each other beginning in which year?",
+      "answer": "1952",
+      "context": "Leonard Lance\nLeonard J. Lance (born June 25, 1952) is the U.S. Representative for New Jersey 's 7 congressional district , serving since 2009. He is a member of the Republican Party. He previously served in the New Jersey Senate and the New Jersey General Assembly where he had been lauded by legislative peers as a moderate Republican. Since 2009, however, his positions have shifted to conservative Republican positions, such as against environmental regulation, and against Planned Parenthood. He has been a staunch opponent of the Affordable Care Act and against abortion rights; in 2017 he voted against federally funded insurance plans which provide coverage for abortion.\n\nLinda Stender\nLinda Stender (born July 25, 1951) is an American Democratic Party politician who has served in the New Jersey General Assembly from 2002 to 2016, where she represented the 22nd legislative district. She ran unsuccessfully for a seat in the United States House of Representatives, seeking to represent New Jersey's 7th District, in 2006 and 2008. She was narrowly defeated by incumbent Representative Mike Ferguson in 2006 but lost by a wider margin to Leonard Lance in the November 4, 2008 election.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05413",
+      "rank": 60,
+      "question": "Which nationality is the international footballer, born 20 March 1984, who made his breakthrough La Liga debut in the 2002–03 Atlético Madrid season, scoring 13 league goals as a teenager?",
+      "answer": "Spanish",
+      "context": "2002–03 Atlético Madrid season\nAtlético de Madrid returned to La Liga following a two-year absence, having a safe ride in the midfield under Luis Aragonés. The season marked the breakthrough of Fernando Torres, the striker making his La Liga debut by the start of the season, scoring 13 league goals as a teenager. Demetrio Albertini was a key signing before the season, the experienced Italian providing a solid display before departing for Lazio in his home country.\n\nFernando Torres\nFernando José Torres Sanz (] ; born 20 March 1984) is a Spanish professional footballer who plays as a striker for La Liga club Atlético Madrid and the Spain national team.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05416",
+      "rank": 61,
+      "question": "What are the two categories of the non-electric version of the neighbourhood electric vehicle?",
+      "answer": "light quadricycles (L6e), and heavy quadricycles (L7e)",
+      "context": "Neighborhood Electric Vehicle\nA Neighborhood Electric Vehicle (NEV) is a U.S. denomination for battery electric vehicles that are usually built to have a top speed of 25 mph , and have a maximum loaded weight of 3,000 lb . Depending on the particular laws of the state, they are legally limited to roads with posted speed limits of 45 mph or less. NEVs fall under the United States Department of Transportation classification for low-speed vehicles. The non-electric version of the neighbourhood electric vehicle is the Motorised quadricycle.\n\nMotorised quadricycle\nQuadricycles are European vehicle categories of four-wheeled microcars defined by limitations in terms of weight, power and speed. Two categories are defined; knowingly light quadricycles (L6e), and heavy quadricycles (L7e).",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05615",
+      "rank": 62,
+      "question": "What rapper on the song \"Wij zijn Ajax\" plays for the Turkish club Beşiktaş?",
+      "answer": "Ryan Babel",
+      "context": "Ryan Babel\nRyan Guno Babel (] ; born 19 December 1986) is a Dutch footballer who plays for Turkish club Beşiktaş. He can play as a striker or left winger.\n\nWij zijn Ajax\n\"Wij zijn Ajax\" (Dutch, \"We are Ajax\") is a song by Ajax and Friends. A one off single by Dutch association football club AFC Ajax, which features guest vocal by several of the club's first team and women's team players, as well as prominent vocalists from the Netherlands, such as Victor Reinier, Koos Alberts, Dré Hazes, Karin Bloemen, Robert ten Brink, Peter Beense and Glennis Grace. The song also features rap parts from Darryl, RB Djan and Ryan Babel. The single was released online as a digital download on SPEC Entertainment, the label owned by popular Dutch rapper Ali B., while the video clip was frequently aired on television at the time of the release.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05617",
+      "rank": 63,
+      "question": "Which feature does the G-shock watch have that is tested by a leakage test?",
+      "answer": "water resistance",
+      "context": "Water Resistant mark\nWater Resistant is a common mark stamped on the back of wrist watches to indicate how well a watch is sealed against the ingress of water. It is usually accompanied by an indication of the static test pressure that a sample of newly manufactured watches were exposed to in a leakage test. The test pressure can be indicated either directly in units of pressure such as bar, atmospheres, or (more commonly) as an equivalent water depth in metres (in the United States sometimes also in feet).\n\nG-Shock\nG-Shock is a line of watches manufactured by Casio, designed to resist mechanical shock and vibration. Its full form is Gravitational Shock. They are designed primarily for sports, military and outdoors-oriented activities; nearly all G-Shocks are digital or a combination of analog or digital and have a stopwatch feature, countdown timer, backlight and water resistance.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05623",
+      "rank": 64,
+      "question": "What age was Georgia Middleman when she started singing in the seventh-most populated city in the United States?",
+      "answer": "ten",
+      "context": "Georgia Middleman\nGeorgia Leigh Middleman (born December 27, 1967) is an American country singer. Middleman sang from age ten at the Texas Star Inn in San Antonio, and began writing songs shortly thereafter. She sold recordings of her first song, There's a Rainbow in Everybody's Heart, on her elementary school playground. In her teens, she opened in concert for Willie Nelson and Merle Haggard, and collaborated with Dick Wagner at age 17. After graduating from high school, she attended New York University on a theater scholarship, and worked on Off-Broadway shows and as a songwriter.\n\nSan Antonio\nSan Antonio ( Spanish for \"Saint Anthony\"), officially the City of San Antonio, is the seventh-most populous city in the United States and the second-most populous city in Texas. Founded as a Spanish mission and colonial outpost in 1718, the city became the first chartered civil settlement in Texas in 1731, making it the state's oldest municipality. The city's deep history is contrasted with its rapid growth: it was the fastest growing of the top ten largest cities in the United States from 2000 to 2010, and the second from 1990 to 2000. Straddling the regional divide between South and Central Texas, San Antonio anchors the southwestern corner of an urban megaregion colloquially known as the \"Texas Triangle\".",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05763",
+      "rank": 65,
+      "question": "Who was the base where the 413th Flight Test Group is stationed named after?",
+      "answer": "Brig Gen Augustine Warner Robins",
+      "context": "413th Flight Test Group\nThe 413th Flight Test Group (413 FTG) is a United States Air Force Air Force Reserve Command unit. It is stationed at Robins Air Force Base, Georgia as a tenant unit.\n\nRobins Air Force Base\nRobins Air Force Base (IATA: WRB, ICAO: KWRB) is a major United States Air Force installation located in Houston County, Georgia, United States. The base is located just east of and adjacent to the city of Warner Robins, 18 mi south-southeast of Macon and approximately 100 mi south-southeast of Atlanta, Georgia. The base is named in honor of Brig Gen Augustine Warner Robins, the Air Force's \"father of logistics\".",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05874",
+      "rank": 66,
+      "question": "What trio was the songwriter of \"What Are We Doin' Lonesome\" from?",
+      "answer": "trio with his younger brothers Steve and Rudy",
+      "context": "What Are We Doin' Lonesome\n\"What Are We Doin' Lonesome\" is a song written by Larry Gatlin, and recorded by American country music group Larry Gatlin & the Gatlin Brothers Band. It was released in October 1981 as the first single from the album \"Not Guilty\". The song reached number 4 on the \"Billboard\" Hot Country Singles & Tracks chart.\n\nLarry Gatlin\nLarry Wayne Gatlin (born May 2, 1948) is an American country and Southern gospel singer and songwriter. As part of a trio with his younger brothers Steve and Rudy, he achieved considerable success within the country music genre, performing on thirty-three Top 40 singles (combining his solo recordings and those with his brothers). As their fame grew, the band became known as Larry Gatlin & the Gatlin Brothers.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-05979",
+      "rank": 67,
+      "question": "Dan Hurley is the brother of which head coach of Arizona State's men's basketball team?",
+      "answer": "Robert Matthew Hurley",
+      "context": "Bobby Hurley\nRobert Matthew Hurley (born June 28, 1971) is an American basketball coach, and former college and professional player. Hurley is currently the head coach of the Arizona State men's team. He was previously the head coach at Buffalo. Before becoming a head coach he was an assistant coach for Wagner and an associate head coach for Rhode Island on the staffs of his younger brother Dan.\n\nDan Hurley\nDaniel S. Hurley (born January 16, 1973) is currently the head basketball coach at the University of Rhode Island. He was named head coach on March 20, 2012 after a two-year stint at Wagner College. Prior to Wagner, Hurley had a standout career as head coach of Saint Benedict's Preparatory School, where he built the New Jersey school into one of the top high school basketball programs in America. Dan Hurley is the son of Hall of Fame high school coach Bob Hurley and younger brother of former Duke and Sacramento Kings guard Bobby Hurley.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06023",
+      "rank": 68,
+      "question": "Kingdom Hearts 358/2 Days was made by the company based in what part of Tokyo?",
+      "answer": "Shinjuku",
+      "context": "Kingdom Hearts 358/2 Days\nKingdom Hearts 358/2 Days (キングダム ハーツ 358/2 Days , Kingudamu Hātsu Surī Faibu Eito Deizu Ōbā Tsū , subtitle read as \"Three Five Eight Days Over Two\") is an action role-playing video game developed by h.a.n.d. and Square Enix for the Nintendo DS. It is the fifth installment in the \"Kingdom Hearts\" series, and takes place near the end of \"Kingdom Hearts\", continuing parallel to \"\". The game was released worldwide in 2009. The story is told from the perspective of Roxas, following his daily life within Organization XIII and his relationship with fellow Organization member Axel; it also introduces a fourteenth member, Xion, who becomes friends with the former two.\n\nSquare Enix\nSquare Enix Holdings Co., Ltd. (株式会社スクウェア・エニックス・ホールディングス , Kabushiki gaisha Sukuwea Enikkusu Hōrudingusu ) is a Japanese video game developer, publisher, and distribution company that is best known for its role-playing video game franchises, which include \"Final Fantasy\", \"Dragon Quest\", and \"Kingdom Hearts\". Several of its franchises have sold over 10 million copies, with the \"Final Fantasy\" franchise selling over 115 million, and the company as a whole made over ¥150 billion in revenue in fiscal year 2014. The Square Enix headquarters are in the Shinjuku Eastside Square Building in Shinjuku, Tokyo. The company employs over 3800 employees worldwide.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06088",
+      "rank": 69,
+      "question": "What character did the star of Into The Homeland play on the TV show Nashville?",
+      "answer": "Lamar Wyatt",
+      "context": "Powers Boothe\nPowers Allen Boothe (June 1, 1948 – May 14, 2017) was an American television and film actor. Some of his most notable roles include his Emmy-winning portrayal of Jim Jones in \"\" and his turns as TV detective Philip Marlowe in the 1980s, Cy Tolliver on \"Deadwood\", \"Curly Bill\" Brocious in \"Tombstone\", Vice-President and subsequently President Noah Daniels on \"24\", and Lamar Wyatt in \"Nashville\".\n\nInto the Homeland\nInto The Homeland is a 1987 made for TV crime drama that aired on HBO on December 26, 1987 directed by Lesli Linka Glatter and starring Powers Boothe, C. Thomas Howell, Paul LeMat and Cindy Pickett. The screenplay was written by Anna Hamilton Phelan.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06163",
+      "rank": 70,
+      "question": "What stadium in Pyongyang, North Korea hosted the Collision in Korea and is also known as the May Day Stadium?",
+      "answer": "Rungrado 1st of May Stadium",
+      "context": "Rungrado 1st of May Stadium\nThe Rungrado 1st of May Stadium, also known as the May Day Stadium, is a multi-purpose stadium in Pyongyang, North Korea, completed on 1 May 1989. It is the largest stadium in the world, with a total capacity of 114,000. The site occupies an area of 20.7 ha .\n\nCollision in Korea\nCollision in Korea, officially known as the Pyongyang International Sports and Culture Festival for Peace (平和のための平壌国際体育・文化祝典 , Heiwa no tame no Pyon'yan kokusai taiiku bunka shukuten ) , was the largest professional wrestling pay-per-view (PPV) event in history. It was jointly produced by World Championship Wrestling (WCW) and New Japan Pro Wrestling (NJPW), and took place over a period of two days on April 28 and 29, 1995 at May Day Stadium in Pyongyang, North Korea. It aired in North America on August 4, 1995, when WCW broadcast a selection of matches from the show on pay-per-view.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06175",
+      "rank": 71,
+      "question": "How many albums have been sold by the band who was supported by Iron Maiden on their World Wide Blitz Tour?",
+      "answer": "close to 50 million",
+      "context": "Judas Priest\nJudas Priest are an English heavy metal band formed in Birmingham, England, in 1969. The band have sold close to 50 million albums to date. They are frequently ranked as one of the greatest metal bands of all time. Despite an innovative and pioneering body of work in the latter half of the 1970s, the band struggled with indifferent record production, repeated changes of drummer and lack of major commercial success or attention until 1980, when they adopted a more simplified sound on the album \"British Steel\", which helped shoot them to rock superstar status. In 1989, they were named as defendants in an unsuccessful lawsuit alleging that subliminal messages on the song \"Better By You, Better Than Me\" had caused the suicide attempts of two young men.\n\nKiller World Tour\nThe Killer World Tour was a concert tour by the heavy metal band Iron Maiden from 17 February 1981 to 15 November 1981. This would be the band's first world tour, including their debut shows in North America (where they supported Judas Priest on their World Wide Blitz Tour and UFO on select dates) and Japan where they recorded the live release, \"Maiden Japan\". On top of this, the band moved into larger venues in the United Kingdom, including the Hammersmith Odeon, London.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06346",
+      "rank": 72,
+      "question": "Which hospital, the Psychiatric Institute of Washington or Howard University Hospital, is known for serving the African American community including former slaves?",
+      "answer": "Howard University Hospital",
+      "context": "Howard University Hospital\nHoward University Hospital, previously known as Freedmen's Hospital, is a major hospital lcated in Washington, D.C., built on the site of the previous Griffith Stadium. The hospital has served the African American community in the area for over 150 years, having been established in 1862 to cater for the medical needs of the thousands of African Americans who came to Washington during the Civil War, seeking their freedom. The first hospital of its kind to provide medical treatment for former slaves, it later became the major hospital for the area's African-American community. Following the closure of D.C. General Hospital, As of 2016, the hospital has the highest rate of wrongful death lawsuits of any health facility in Washington D.C. over the previous decade.\n\nPsychiatric Institute of Washington\nThe Psychiatric Institute of Washington (PIW) is an acute (104 bed) psychiatric hospital in Washington, D.C. Opened in 1967, PIW is a short-term, private hospital. It offers behavioral healthcare to patients suffering from mental and addictive illnesses, including children, adolescents, adults and the elderly. Services offered by PIW include inpatient, partial and intensive outpatient hospitalization, and group treatment programs for substance abuse and addiction.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06447",
+      "rank": 73,
+      "question": "Not About Angels was used in the film adaptation of what novel by John Green?",
+      "answer": "The Fault in Our Stars",
+      "context": "Not About Angels\n\"Not About Angels\" is a song by English musician Birdy. It is one of the theme songs for the film adaptation of the book \"The Fault in Our Stars\".\n\nThe Fault in Our Stars\nThe Fault in Our Stars is the sixth novel by author John Green, published in January 2012. The title is inspired by Act 1, Scene 2 of Shakespeare's play \"Julius Caesar\", in which the nobleman Cassius says to Brutus: \"The fault, dear Brutus, is not in our stars, / But in ourselves, that we are underlings.\" The story is narrated by Hazel Grace Lancaster, a 16-year-old girl with cancer. Hazel is forced by her parents to attend a support group where she subsequently meets and falls in love with 17-year-old Augustus Waters, an ex-basketball player and amputee. A feature film adaptation of the novel directed by Josh Boone and starring Shailene Woodley, Ansel Elgort and Nat Wolff was released on June 6, 2014. Both the book and its film adaptation were met with strong critical and commercial success.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06483",
+      "rank": 74,
+      "question": "In what year was the drummer from the album \"Angel of Retribution\" born?",
+      "answer": "1961",
+      "context": "Painkiller (Judas Priest album)\nPainkiller is the twelfth studio album by British heavy metal band Judas Priest, released in September 1990. It is the last Judas Priest album to feature lead singer Rob Halford until his return for the 2005 album \"Angel of Retribution\" and the first to feature drummer Scott Travis.\n\nScott Travis\nMark Scott Travis (born September 6, 1961) is a Grammy Award-winning American rock musician, best known as the drummer for the English heavy metal band Judas Priest and the American heavy metal band Racer X.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06498",
+      "rank": 75,
+      "question": "Mount Stimson is the second highest peak in national park that encompasses how many acres?",
+      "answer": "over 1 million",
+      "context": "Mount Stimson\nMount Stimson (10142 ft ) is the second highest peak in Glacier National Park, located in Montana, United States. It is part of the Lewis Range, which spans much of the park. It is located in the remote southwestern portion of the park, approximately 5 mi west of the Continental Divide and 12 mi southeast of Lake McDonald. It is drained by Pinchot Creek (on the south) and Nyack Creek (on the other sides), both of which flow into the Middle Fork of the Flathead River.\n\nGlacier National Park (U.S.)\nGlacier National Park is a national park located in the U.S. state of Montana, on the Canada–United States border with the Canadian provinces of Alberta and British Columbia. The park encompasses over 1 million acre and includes parts of two mountain ranges (sub-ranges of the Rocky Mountains), over 130 named lakes, more than 1,000 different species of plants, and hundreds of species of animals. This vast pristine ecosystem is the centerpiece of what has been referred to as the \"Crown of the Continent Ecosystem\", a region of protected land encompassing 16000 mi2 . The current Superintendent is Jeff Mow.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06802",
+      "rank": 76,
+      "question": "Are Hungry Hungry Hippos and Parcheesi both published by Parker Brothers?",
+      "answer": "no",
+      "context": "Hungry Hungry Hippos\nHungry Hungry Hippos is a tabletop game made for 2–4 players, produced by Hasbro, under the brand of its subsidiary, Milton Bradley. The idea for the game was published in 1967 by toy inventor Fred Kroll and it was introduced in 1978. The objective of the game is for each player to collect as many marbles as possible with their 'hippo' (a toy hippo model). The game is marketed under the \"Elefun and Friends\" banner, along with \"Elefun\", \"Mouse Trap\" and \"Gator Golf\". The game was referenced in the 2010 Disney Pixar movie, \"Toy Story 3\" and the 2001 cult film \"Donnie Darko\". There is also a battle level based on the game in the 2016 Micro Machines game.\n\nParcheesi\nParcheesi is a brand-name American adaptation of the Indian cross and circle board game Pachisi, published by Parker Brothers and Winning Moves.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06836",
+      "rank": 77,
+      "question": "In what year was the aviator in whose honour the Quai d'Auteuil was renamed born?",
+      "answer": "1872",
+      "context": "Quai Louis-Blériot\nThe Quai Louis-Blériot is a quay alongside the Seine in the 16th arrondissement of Paris, France. It was known as the Quai d'Auteuil until it was renamed in honour of French aviator Louis Blériot in 1937.\n\nLouis Blériot\nLouis Charles Joseph Blériot (1 July 1872 – 1 August 1936) was a French aviator, inventor and engineer. He developed the first practical headlamp for trucks and established a profitable business manufacturing them, using much of the money he made to finance his attempts to build a successful aircraft. In 1909 he became world-famous for making the first flight across the English Channel in a heavier than air aircraft, winning the prize of £1,000 offered by the \"Daily Mail\" newspaper. Blériot was also the first to make a working, powered, piloted monoplane and was the founder of a successful aircraft manufacturing company.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-06877",
+      "rank": 78,
+      "question": "What is the birthday of the man who played Lex Luthor in Superman IV: The Quest for Peace?",
+      "answer": "January 30, 1930",
+      "context": "Superman IV: The Quest for Peace\nSuperman IV: The Quest for Peace is a 1987 American superhero film directed by Sidney J. Furie, based on the DC Comics character Superman. It is the fourth and final film in the original \"Superman\" film series, and the first film in that series not to be produced by Alexander and Ilya Salkind, but rather by Golan-Globus' Cannon Films, in association with Warner Bros. Gene Hackman returned as Lex Luthor, who creates an evil solar-powered version of Superman called Nuclear Man.\n\nGene Hackman\nEugene Allen \"Gene\" Hackman (born January 30, 1930) is a retired American actor and novelist. In a career spanning nearly five decades, Hackman was nominated for five Academy Awards, winning Best Actor in \"The French Connection\" and Best Supporting Actor in \"Unforgiven\". He won three Golden Globes and two BAFTAs.",
+      "level": "hard"
+    },
+    {
+      "id": "hotpotqa-07038",
+      "rank": 79,
+      "question": "Are Werther and The Odyssey both operas?",
+      "answer": "no",
+      "context": "Werther\nWerther is an opera (\"drame lyrique\") in four acts by Jules Massenet to a French libretto by Édouard Blau, Paul Milliet and Georges Hartmann (who used the pseudonym Henri Grémont). It is loosely based on the German epistolary novel \"The Sorrows of Young Werther\" by Johann Wolfgang von Goethe, which was based both on fact and on Goethe's own early life. Earlier examples of operas using the story were made by Kreutzer (1792) and Pucitta (1802).\n\nOdyssey\nThe Odyssey ( ; Greek: Ὀδύσσεια \"Odýsseia\", ] in Classical Attic) is one of two major ancient Greek epic poems attributed to Homer. It is, in part, a sequel to the \"Iliad\", the other work ascribed to Homer. The \"Odyssey\" is fundamental to the modern Western canon, and is the second-oldest extant work of Western literature; the \"Iliad\" is the oldest. Scholars believe the \"Odyssey\" was composed near the end of the 8th century BC, somewhere in Ionia, the Greek coastal region of Anatolia.",
+      "level": "hard"
+    }
+  ]
+}

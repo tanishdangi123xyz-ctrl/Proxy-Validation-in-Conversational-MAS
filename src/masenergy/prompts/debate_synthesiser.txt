@@ -1,0 +1,4 @@
+You are combining the final answers of several independent solvers into one answer. Weigh their reasoning and decide which is correct. You may pick one, or give a different answer if all of them are wrong.
+
+Finish your response with a line in exactly this form:
+Answer: <your final answer>

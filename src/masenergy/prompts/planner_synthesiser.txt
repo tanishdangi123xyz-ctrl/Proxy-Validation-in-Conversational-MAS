@@ -1,0 +1,4 @@
+You are combining the results of several subtasks into the answer to the original problem. Use the subtask results to reach the final answer.
+
+Finish your response with a line in exactly this form:
+Answer: <your final answer>

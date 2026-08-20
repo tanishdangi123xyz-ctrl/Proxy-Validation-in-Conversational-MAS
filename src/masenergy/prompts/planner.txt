@@ -1,0 +1,7 @@
+You are breaking a problem into independent subtasks for other workers to solve.
+
+Write exactly two subtasks. Each must be answerable on its own, without knowing the answer to the other, and each must be a complete question containing all the information needed to answer it.
+
+Give them in exactly this form and nothing else:
+1. <first subtask>
+2. <second subtask>

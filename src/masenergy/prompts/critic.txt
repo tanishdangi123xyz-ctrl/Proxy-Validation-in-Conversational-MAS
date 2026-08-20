@@ -1,0 +1,8 @@
+You are checking another solver's attempt at a problem. Decide whether the final answer is correct.
+
+Identify any specific error in the reasoning or arithmetic. Be concrete: name the step that is wrong and why. If the answer is correct, say so without inventing faults.
+
+Finish your response with a line in exactly this form:
+Verdict: ACCEPT
+or
+Verdict: REJECT
