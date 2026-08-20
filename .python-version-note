@@ -1,0 +1,5 @@
+Laptop:  Python 3.14.3  (venv, requirements.txt)
+Jetson:  Python 3.10 (JetPack 6) or 3.12 (JetPack 7) - system python, no venv
+
+src/masenergy/ MUST remain 3.10-compatible and dependency-free.
+Do not use: PEP 695 type params, the `type` statement, or any 3.11+ syntax.
