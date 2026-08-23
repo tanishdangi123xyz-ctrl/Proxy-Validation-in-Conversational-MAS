@@ -3,6 +3,11 @@
 Call count genuinely varies between items, which is the point: this is the
 retry mechanism the temperature-as-cause question depends on. It is not
 smoothed or capped tighter than SOLVER_CRITIC_MAX_ITERS for tidiness.
+
+What the solver is shown on revision is the critic's full response, not the
+extracted verdict. Passing only ACCEPT or REJECT would make this a blind retry
+loop wearing the costume of a feedback topology, and the energy it spent on
+criticism would buy nothing.
 """
 
 import re
@@ -38,7 +43,7 @@ def run(client, task, temperature, seed, ctx, validator):
         critic_user = "Problem:\n%s\n\nSolver's attempt:\n%s" % (task, draft)
         context = dict(ctx, topology="solver_critic", role="critic",
                        round_index=iteration + 1, call_index_in_task=index)
-        _, verdict, _, recs = client.call_with_retries(
+        critique, verdict, _, recs = client.call_with_retries(
             chat.build(critic_system, critic_user), temperature,
             chat.call_seed(seed, index), context, _verdict_validator
         )
@@ -48,7 +53,7 @@ def run(client, task, temperature, seed, ctx, validator):
         if verdict == "ACCEPT" or iteration == config.SOLVER_CRITIC_MAX_ITERS - 1:
             break
 
-        feedback = recs[-1].answer_extracted or ""
+        feedback = critique
         revise_user = ("%s\n\nYour previous attempt:\n%s\n\nCritic feedback:\n%s"
                        % (task, draft, feedback))
         context = dict(ctx, topology="solver_critic", role="solver",

@@ -22,14 +22,19 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from masenergy import config
-from masenergy.datasets import items_hash
-
-from datasets import load_dataset
+from masenergy import datasets as ds
 
 OUT_DIR = ROOT / "data" / "items"
 
+GSM_HARD_REPOS = ["reasoning-machines/gsm-hard"]
+GSM_HARD_SPLIT = "train"
+HOTPOTQA_REPOS = ["hotpotqa/hotpot_qa", "hotpot_qa"]
+HOTPOTQA_SPLIT = "validation"
+
 
 def _load(names, subset, split):
+    """Import the datasets library lazily so the row builders stay testable."""
+    from datasets import load_dataset
     last = None
     for name in names:
         try:
@@ -44,48 +49,59 @@ def _sample_indices(n_total, n_want, seed):
     return sorted(rng.sample(range(n_total), n_want))
 
 
-def prepare_gsm8k(n_items, seed):
-    ds, source = _load(["openai/gsm8k", "gsm8k"], "main", "test")
-    idx = _sample_indices(len(ds), n_items, seed)
-    items = []
-    for rank, i in enumerate(idx):
-        row = ds[i]
-        gold = row["answer"].split("####")[-1].strip()
-        items.append({
-            "id": "gsm8k-%05d" % i,
-            "rank": rank,
-            "question": row["question"].strip(),
-            "answer": gold,
-            "context": None,
-            "level": None,
-        })
-    return items, source, len(ds)
+def build_gsm_hard(row, index, rank):
+    """One gsm-hard row in the campaign item schema.
+
+    gsm-hard, not gsm8k. The two are different benchmarks: gsm-hard replaces
+    the operands with large awkward values, which is the reason it lands inside
+    the accuracy band while plain gsm8k does not.
+    """
+    return {
+        "id": "gsm_hard-%05d" % index,
+        "rank": rank,
+        "question": row["input"].strip(),
+        "answer": ds.format_number_gold(row["target"]),
+        "context": None,
+        "level": None,
+    }
+
+
+def gold_pairs(row):
+    """The supporting paragraphs of a hotpotqa row, distractors dropped."""
+    gold_titles = set(row["supporting_facts"]["title"])
+    pairs = []
+    for title, sents in zip(row["context"]["title"], row["context"]["sentences"]):
+        if title in gold_titles:
+            pairs.append((title, "".join(sents).strip()))
+    return pairs
+
+
+def build_hotpotqa(row, index, rank):
+    """One hotpotqa row in the campaign item schema."""
+    return {
+        "id": "hotpotqa-%05d" % index,
+        "rank": rank,
+        "question": row["question"].strip(),
+        "answer": str(row["answer"]).strip(),
+        "context": ds.context_block(gold_pairs(row)),
+        "level": row.get("level"),
+    }
+
+
+def prepare_gsm_hard(n_items, seed):
+    data, source = _load(GSM_HARD_REPOS, None, GSM_HARD_SPLIT)
+    rows = list(data)
+    idx = _sample_indices(len(rows), n_items, seed)
+    items = [build_gsm_hard(rows[i], i, rank) for rank, i in enumerate(idx)]
+    return items, source, len(rows)
 
 
 def prepare_hotpotqa(n_items, seed):
-    ds, source = _load(
-        ["hotpotqa/hotpot_qa", "hotpot_qa"], "distractor", "validation"
-    )
-    idx = _sample_indices(len(ds), n_items, seed)
-    items = []
-    for rank, i in enumerate(idx):
-        row = ds[i]
-        gold_titles = set(row["supporting_facts"]["title"])
-        paragraphs = []
-        titles = row["context"]["title"]
-        sentences = row["context"]["sentences"]
-        for title, sents in zip(titles, sentences):
-            if title in gold_titles:
-                paragraphs.append("%s\n%s" % (title, " ".join(s.strip() for s in sents)))
-        items.append({
-            "id": "hotpotqa-%05d" % i,
-            "rank": rank,
-            "question": row["question"].strip(),
-            "answer": row["answer"].strip(),
-            "context": "\n\n".join(paragraphs),
-            "level": row.get("level"),
-        })
-    return items, source, len(ds)
+    data, source = _load(HOTPOTQA_REPOS, "distractor", HOTPOTQA_SPLIT)
+    rows = [r for r in data if gold_pairs(r)]
+    idx = _sample_indices(len(rows), n_items, seed)
+    items = [build_hotpotqa(rows[i], i, rank) for rank, i in enumerate(idx)]
+    return items, source, len(rows)
 
 
 def write(name, items, source, pool_size, split, seed):
@@ -97,7 +113,7 @@ def write(name, items, source, pool_size, split, seed):
         "sample_seed": seed,
         "n_items": len(items),
         "created_utc": datetime.now(timezone.utc).isoformat(),
-        "sha256": items_hash(items),
+        "sha256": ds.items_hash(items),
         "items": items,
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -114,11 +130,11 @@ def main():
     seed = config.ORDER_SEED
     print("Preparing %d items per dataset, seed %d\n" % (n, seed))
 
-    items, source, pool = prepare_gsm8k(n, seed)
-    write("gsm8k", items, source, pool, "test", seed)
+    items, source, pool = prepare_gsm_hard(n, seed)
+    write(ds.GSM_HARD, items, source, pool, GSM_HARD_SPLIT, seed)
 
     items, source, pool = prepare_hotpotqa(n, seed)
-    write("hotpotqa", items, source, pool, "validation", seed)
+    write(ds.HOTPOTQA, items, source, pool, HOTPOTQA_SPLIT, seed)
 
     print("\nWritten to %s" % OUT_DIR)
 

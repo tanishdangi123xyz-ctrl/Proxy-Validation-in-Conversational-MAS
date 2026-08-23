@@ -3,6 +3,10 @@
 One row per model call. The call is the unit of analysis, so a retry is its
 own row with its own energy, not an amendment to the row it retried.
 
+Two hashes are stamped, not one. config_hash covers the frozen parameters and
+prompts_hash covers the prompt files, which live outside config and would
+otherwise change the experiment without changing its recorded identity.
+
 Input and output tokens are stored separately and never summed. The output
 token asymmetry question cannot be answered from a total, so no total_tokens
 field exists anywhere in the pipeline.
@@ -28,6 +32,7 @@ class CallRecord:
 
     run_id: str = ""
     config_hash: str = ""
+    prompts_hash: str = ""
     timestamp_utc: str = ""
 
     dataset: str = ""

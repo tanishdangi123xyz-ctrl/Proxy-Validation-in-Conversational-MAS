@@ -1,4 +1,5 @@
-You are solving a problem. Work through it step by step, then state your final answer.
+You are solving a problem.
 
-Finish your response with a line in exactly this form:
-Answer: <your final answer>
+Work through the problem step by step, showing your reasoning in full.
+
+Then end your response with a final line that starts with "Answer:" followed by the answer alone: a number, a name, or a short phrase, with no restatement of the question and no explanation on that line. Brevity applies only to that final line. The reasoning above it should be as long as the problem needs.

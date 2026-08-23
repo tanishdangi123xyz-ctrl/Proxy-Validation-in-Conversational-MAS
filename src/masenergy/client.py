@@ -21,7 +21,7 @@ import time
 import urllib.error
 import urllib.request
 
-from . import config
+from . import chat, config
 from .records import CallRecord, utc_now
 
 _CALL_LOCK = threading.Lock()
@@ -120,6 +120,7 @@ class LlamaClient:
         self.port = port or config.SERVER_PORT
         self.run_id = run_id
         self.config_hash = config.config_hash()
+        self.prompts_hash = chat.prompts_hash()
         self._url = "http://%s:%d/completion" % (self.host, self.port)
 
     def _payload(self, prompt, temperature, seed):
@@ -186,6 +187,7 @@ class LlamaClient:
         record = CallRecord(
             run_id=self.run_id,
             config_hash=self.config_hash,
+            prompts_hash=self.prompts_hash,
             timestamp_utc=utc_now(),
 
             dataset=context.get("dataset", ""),

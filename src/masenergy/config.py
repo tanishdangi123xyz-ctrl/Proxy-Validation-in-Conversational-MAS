@@ -14,11 +14,13 @@ Rationale lives in the design analysis in the doc folder.
 import hashlib
 import json
 from itertools import product
+from pathlib import Path
 
-MODEL_REPO = "Qwen/Qwen3-1.7B"
-MODEL_FILE = None
-MODEL_REVISION = None
-MODEL_PATH = None
+MODEL_REPO = "unsloth/Qwen3-1.7B-GGUF"
+MODEL_SOURCE_REPO = "Qwen/Qwen3-1.7B"
+MODEL_FILE = "Qwen3-1.7B-BF16.gguf"
+MODEL_REVISION = "d7f544eead698dbd1f15126ef60b45a1e1933222"
+MODEL_PATH = "models/Qwen3-1.7B-BF16.gguf"
 
 PRECISION = "BF16"
 QUANTIZATION = None
@@ -28,14 +30,14 @@ THINKING_MODE = False
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 8080
 SERVER_TIMEOUT_S = 600.0
-CTX_SIZE = None
+CTX_SIZE = 3072
 
 LLAMA_FLAGS = (
     "--n-gpu-layers", "999",
     "--parallel", "1",
     "--no-context-shift",
     "--no-mmap",
-    "--cont-batching", "false",
+    "--no-cont-batching",
 )
 
 CACHE_PROMPT = False
@@ -67,7 +69,7 @@ IDLE_EVERY_N_CALLS = 20
 NVPMODEL_MODE = None
 FAN_PWM = 255
 
-DATASETS = ("gsm8k", "hotpotqa")
+DATASETS = ("gsm_hard", "hotpotqa")
 N_ITEMS = 80
 SEEDS = (101, 202, 303)
 ORDER_SEED = 20260820
@@ -83,6 +85,16 @@ REQUIRED_BEFORE_RUN = (
     "NVPMODEL_MODE",
     "PRICE_IN_PER_M", "PRICE_OUT_PER_M", "PRICE_SOURCE",
 )
+
+
+def repo_root():
+    """Repository root, so paths resolve identically on laptop and Jetson."""
+    return Path(__file__).resolve().parent.parent.parent
+
+
+def resolve_model_path():
+    """Absolute path to the weights on whichever machine this is running on."""
+    return repo_root() / MODEL_PATH
 
 
 def cells():
