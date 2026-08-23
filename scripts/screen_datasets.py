@@ -23,7 +23,6 @@ campaign uses:
 import argparse
 import csv
 import json
-import random
 import re
 import statistics
 import sys
@@ -33,14 +32,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from masenergy import config, topologies
+from masenergy import band, config, topologies
 from masenergy import datasets as ds
 from masenergy.client import LlamaClient
 from masenergy.records import RecordWriter, new_run_id
 
 SCREEN_DIR = ROOT / "data" / "screen"
-BAND_LOW = 45.0
-BAND_HIGH = 70.0
+BAND_LOW = band.BAND_LOW
+BAND_HIGH = band.BAND_HIGH
 
 
 def _num(value):
@@ -227,7 +226,11 @@ def prep(n_items, only):
         if len(rows) < n_items:
             print("%-10s FAILED   pool has only %d usable rows" % (spec["name"], len(rows)))
             continue
-        picked = random.Random(config.ORDER_SEED).sample(range(len(rows)), n_items)
+        # Same draw the campaign preparer makes, so the items screened are the
+        # items the campaign will run, and a screen of 30 contains a screen of
+        # 15. Previously both called random.sample independently and nested
+        # only because CPython happens to use one algorithm at both sizes.
+        picked = ds.nested_sample(len(rows), n_items, config.ORDER_SEED)
         items = [spec["build"](rows[i], i) for i in picked]
         payload = {"name": spec["name"], "source": source, "split": spec["split"],
                    "pool_size": len(rows), "sample_seed": config.ORDER_SEED,
@@ -298,27 +301,37 @@ def report(calls_path, summary, temperature):
         ins = sorted(int(r["prompt_n"]) for r in sub)
         outs = sorted(int(r["predicted_n"]) for r in sub)
         worst = max(int(r["prompt_n"]) + int(r["predicted_n"]) for r in sub)
-        if acc > BAND_HIGH:
-            verdict = "too easy, ceiling"
-        elif acc < BAND_LOW:
-            verdict = "too hard, floor"
-        else:
-            verdict = "IN BAND"
+        name, _, lo, hi = band.verdict(correct, total)
         print("%-10s %-5s %7.1f%% %7.1f%% %8d %8d %8d   %s"
               % (spec["name"], spec["slot"], acc, parse,
-                 statistics.median(ins), statistics.median(outs), worst, verdict))
+                 statistics.median(ins), statistics.median(outs), worst,
+                 "%s  95%% CI %.0f-%.0f" % (name, lo, hi)))
 
     retries = sum(r["is_retry"] == "True" for r in rows)
+    # stop_type "limit", not the truncated flag: truncated means the prompt
+    # overran the context, which is a different failure and is false on every
+    # row this pipeline has ever written.
+    clipped = sum(r["finish_reason"] == "limit" for r in rows)
     truncated = sum(r["truncated"] == "True" for r in rows)
+    leaked = sum(r.get("thinking_leak") == "True" for r in rows)
+    n_per = max((t for _, _, t in summary), default=0)
     print("\n  acc     baseline accuracy, target band %.0f-%.0f%%" % (BAND_LOW, BAND_HIGH))
     print("  prompt and output are medians in tokens, worst is the largest prompt+output")
     print("  retries triggered: %d of %d calls" % (retries, len(rows)))
-    print("  truncated responses: %d, nonzero means MAX_TOKENS is clipping" % truncated)
+    print("  hit MAX_TOKENS (stop_type=limit): %d, nonzero means output length is censored"
+          % clipped)
+    print("  prompt truncated by the server: %d" % truncated)
+    print("  responses carrying a think tag: %d" % leaked)
     if rows:
         print("  largest prompt+output across all candidates: %d tokens"
               % max(int(r["prompt_n"]) + int(r["predicted_n"]) for r in rows))
-    print("  n is small, so treat anything within a few points of a band edge")
-    print("  as unresolved rather than decided\n")
+    if n_per:
+        lo, hi = band.wilson(int(round(0.55 * n_per)), n_per)
+        print("  at n=%d the 95%% interval is %.0f points wide and the band is only %.0f,"
+              % (n_per, hi - lo, BAND_HIGH - BAND_LOW))
+        print("  so every verdict above that reads UNRESOLVED genuinely is. %d items"
+              % band.n_for_halfwidth(10.0))
+        print("  would give +-10 points, %d would give +-5.\n" % band.n_for_halfwidth(5.0))
 
 
 if __name__ == "__main__":

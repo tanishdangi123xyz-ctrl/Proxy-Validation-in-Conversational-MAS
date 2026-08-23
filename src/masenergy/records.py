@@ -11,6 +11,20 @@ Input and output tokens are stored separately and never summed. The output
 token asymmetry question cannot be answered from a total, so no total_tokens
 field exists anywhere in the pipeline.
 
+Three token fields, not one, because llama.cpp reports three different things.
+prompt_n is what the server actually ran through prefill, prompt_n_total is how
+long the prompt was, and slot_cache_n is how much KV the slot held afterwards.
+With prompt caching off the first two must be equal; a gap between them means
+the server served part of the prompt from cache and the energy of a call no
+longer matches the tokens recorded against it. slot_cache_n is roughly
+prompt_n + predicted_n and is a diagnostic, not a cache-hit count, which is why
+it is no longer called cached_n.
+
+Grading is not stored here. It is a property of a task, computed from the final
+answer of a multi-call topology, so it lives in the task table. Carrying an
+ungraded correct column on every call row would read as a campaign in which
+nothing was ever right.
+
 Nothing derived is stored. Imputed cost is a function of the token counts and
 the price schedule, so it is computed during analysis; storing it would let a
 price revision silently invalidate old rows.
@@ -49,8 +63,9 @@ class CallRecord:
     retry_reason: str = ""
 
     prompt_n: int = 0
+    prompt_n_total: int = 0
     predicted_n: int = 0
-    cached_n: int = 0
+    slot_cache_n: int = 0
 
     wall_clock_ms_orchestrator: float = 0.0
     server_prefill_ms: float = 0.0
@@ -82,10 +97,9 @@ class CallRecord:
 
     finish_reason: str = ""
     truncated: bool = False
+    thinking_leak: bool = False
     parse_ok: bool = False
     answer_extracted: str = ""
-    correct: bool = False
-    f1: float = 0.0
 
 
 FIELDS = tuple(f.name for f in dataclass_fields(CallRecord))
@@ -95,6 +109,24 @@ for _name in _FORBIDDEN:
     if _name in FIELDS:
         raise RuntimeError(
             "Field '%s' would merge input and output tokens; remove it" % _name
+        )
+
+
+def _check_header(path):
+    """Refuse to append rows that will not line up with the ones already there.
+
+    A schema change between two sessions of a resumable run would otherwise
+    write correctly formed CSV whose columns mean something different below the
+    join, and nothing downstream could tell.
+    """
+    with open(path, "r", newline="", encoding="utf-8") as fh:
+        header = next(csv.reader(fh), [])
+    if tuple(header) != FIELDS:
+        raise RuntimeError(
+            "Schema mismatch appending to %s: file has %d columns, this build "
+            "writes %d. Differences: %s"
+            % (path, len(header), len(FIELDS),
+               sorted(set(header) ^ set(FIELDS)) or "column order")
         )
 
 
@@ -125,6 +157,8 @@ class RecordWriter:
         self._rows = 0
 
         existed = self.path.exists() and self.path.stat().st_size > 0
+        if existed:
+            _check_header(self.path)
         self._fh = open(self.path, "a", newline="", encoding="utf-8")
         self._writer = csv.DictWriter(self._fh, fieldnames=FIELDS)
         if not existed:

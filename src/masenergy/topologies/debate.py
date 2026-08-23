@@ -6,6 +6,12 @@ separated by a single trigger line.
 
 Call count is fixed by DEBATE_AGENTS and DEBATE_ROUNDS, never by a stopping
 condition, so the structure stays comparable across items.
+
+Every call is stateless, so an agent's own previous answer has to be replayed
+into its prompt or it does not have one. Shown only its peer's answer and told
+to reconsider, an agent has nothing to reconsider against and adopts what it
+was shown; two agents then swap answers each round, which looks like vigorous
+disagreement in the change-rate check while no deliberation is happening.
 """
 
 from .. import chat, config
@@ -27,8 +33,14 @@ def run(client, task, temperature, seed, ctx, validator):
                     "Solver %d answered:\n%s" % (j + 1, texts[j])
                     for j in range(config.DEBATE_AGENTS) if j != agent
                 )
-                user = ("%s\n\n%s\n\nReconsider your own answer in light of "
-                        "the above, then give your answer." % (task, peers))
+                if config.DEBATE_SHOWS_OWN_PRIOR:
+                    user = ("%s\n\nYour own previous answer:\n%s\n\n%s\n\n"
+                            "Reconsider your own answer in light of the above, "
+                            "then give your answer."
+                            % (task, texts[agent], peers))
+                else:
+                    user = ("%s\n\n%s\n\nReconsider your own answer in light of "
+                            "the above, then give your answer." % (task, peers))
 
             context = dict(ctx, topology="debate", role="agent_%d" % (agent + 1),
                            round_index=round_no + 1, call_index_in_task=index)

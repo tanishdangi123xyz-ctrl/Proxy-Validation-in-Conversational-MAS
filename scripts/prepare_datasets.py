@@ -13,7 +13,6 @@ dataset or the prompt, not the item list.
 """
 
 import json
-import random
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -45,8 +44,8 @@ def _load(names, subset, split):
 
 
 def _sample_indices(n_total, n_want, seed):
-    rng = random.Random(seed)
-    return sorted(rng.sample(range(n_total), n_want))
+    """Shared with the screen, so a screened item is one the campaign runs."""
+    return ds.nested_sample(n_total, n_want, seed)
 
 
 def build_gsm_hard(row, index, rank):
@@ -104,7 +103,15 @@ def prepare_hotpotqa(n_items, seed):
     return items, source, len(rows)
 
 
-def write(name, items, source, pool_size, split, seed):
+def write(name, items, source, pool_size, split, seed, force=False):
+    """Freeze one item set. Refuses to overwrite unless explicitly forced.
+
+    Overwriting an item file mid-campaign silently redefines what the finished
+    blocks measured, and the only trace is a hash in a metadata sidecar nobody
+    reads until the analysis disagrees with itself. Regenerating both sets
+    together and re-screening is a decision; doing it by re-running a script is
+    an accident.
+    """
     payload = {
         "dataset": name,
         "source": source,
@@ -118,6 +125,17 @@ def write(name, items, source, pool_size, split, seed):
     }
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     path = OUT_DIR / ("items_%s.json" % name)
+    if path.exists() and not force:
+        existing = json.loads(path.read_text(encoding="utf-8"))
+        if existing.get("sha256") == payload["sha256"]:
+            print("%-10s unchanged, kept  sha=%s" % (name, payload["sha256"][:16]))
+            return path
+        raise SystemExit(
+            "%s already exists and would change: recorded sha %s, new sha %s.\n"
+            "Blocks already run were measured on the recorded set. Re-run with "
+            "--force only if you are regenerating every dataset and re-screening."
+            % (path, existing.get("sha256", "")[:16], payload["sha256"][:16])
+        )
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(payload, fh, indent=2, ensure_ascii=False)
     print("%-10s %3d items from %-24s pool=%-6d sha=%s"
@@ -125,19 +143,24 @@ def write(name, items, source, pool_size, split, seed):
     return path
 
 
-def main():
+def main(force=False):
     n = config.N_ITEMS
     seed = config.ORDER_SEED
     print("Preparing %d items per dataset, seed %d\n" % (n, seed))
 
     items, source, pool = prepare_gsm_hard(n, seed)
-    write(ds.GSM_HARD, items, source, pool, GSM_HARD_SPLIT, seed)
+    write(ds.GSM_HARD, items, source, pool, GSM_HARD_SPLIT, seed, force)
 
     items, source, pool = prepare_hotpotqa(n, seed)
-    write(ds.HOTPOTQA, items, source, pool, HOTPOTQA_SPLIT, seed)
+    write(ds.HOTPOTQA, items, source, pool, HOTPOTQA_SPLIT, seed, force)
 
     print("\nWritten to %s" % OUT_DIR)
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite frozen item files that would change")
+    main(ap.parse_args().force)

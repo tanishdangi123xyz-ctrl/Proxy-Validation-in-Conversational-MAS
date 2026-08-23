@@ -107,6 +107,20 @@ class ServerError(RuntimeError):
     pass
 
 
+def _as_cell(value):
+    """Render a validator's extracted value for one CSV cell.
+
+    Not every validator returns a string. The planner's returns a list of
+    subtasks, and str() on a list writes a Python repr into a data column that
+    every other row uses for an answer.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, (list, tuple)):
+        return " | ".join(str(v) for v in value)
+    return str(value)
+
+
 class LlamaClient:
     """Issues calls to llama.cpp and writes one record per call."""
 
@@ -124,6 +138,14 @@ class LlamaClient:
         self._url = "http://%s:%d/completion" % (self.host, self.port)
 
     def _payload(self, prompt, temperature, seed):
+        """Every sampler the server has a default for is named explicitly.
+
+        A parameter left out of the payload is still applied, just by
+        llama.cpp's default rather than by us, and it will not appear in
+        config.snapshot(). min_p defaults to 0.05, which truncates the tail the
+        temperature sweep exists to widen, so an unnamed min_p would quietly
+        cap the effect this study is trying to measure.
+        """
         return {
             "prompt": prompt,
             "temperature": float(temperature),
@@ -131,6 +153,12 @@ class LlamaClient:
             "n_predict": config.MAX_TOKENS,
             "top_p": config.TOP_P,
             "top_k": config.TOP_K,
+            "min_p": config.MIN_P,
+            "typical_p": config.TYPICAL_P,
+            "repeat_penalty": config.REPEAT_PENALTY,
+            "presence_penalty": config.PRESENCE_PENALTY,
+            "frequency_penalty": config.FREQUENCY_PENALTY,
+            "mirostat": config.MIROSTAT,
             "cache_prompt": config.CACHE_PROMPT,
             "stream": False,
         }
@@ -181,8 +209,29 @@ class LlamaClient:
 
             after = self.device.read_state()
 
+        # Response validation lives here rather than in _post so it covers any
+        # transport, and so it runs after the trigger has gone low. llama.cpp
+        # can answer 200 with an error body; treating that as an empty
+        # completion would spend three retries on a server that is not going to
+        # recover, and record them as the model failing to follow the format.
+        if not isinstance(resp, dict):
+            raise ServerError("llama.cpp returned %s, not an object" % type(resp).__name__)
+        if resp.get("error"):
+            raise ServerError("llama.cpp returned an error: %s" % (resp["error"],))
+
         timings = resp.get("timings", {}) or {}
         text = resp.get("content", "") or ""
+
+        prompt_n = int(timings.get("prompt_n", resp.get("tokens_evaluated", 0)) or 0)
+        prompt_n_total = int(resp.get("tokens_evaluated", prompt_n) or 0)
+        if not config.CACHE_PROMPT and prompt_n_total and prompt_n != prompt_n_total:
+            raise ServerError(
+                "prompt cache is live despite cache_prompt=false: the server "
+                "prefilled %d of %d prompt tokens. Energy would be attributed "
+                "to tokens it never processed. Check --cache-reuse and "
+                "--slot-save-path on the llama-server command line."
+                % (prompt_n, prompt_n_total)
+            )
 
         record = CallRecord(
             run_id=self.run_id,
@@ -203,9 +252,10 @@ class LlamaClient:
             is_retry=bool(context.get("is_retry", False)),
             retry_reason=context.get("retry_reason", ""),
 
-            prompt_n=int(timings.get("prompt_n", resp.get("tokens_evaluated", 0)) or 0),
+            prompt_n=prompt_n,
+            prompt_n_total=prompt_n_total,
             predicted_n=int(timings.get("predicted_n", resp.get("tokens_predicted", 0)) or 0),
-            cached_n=int(resp.get("tokens_cached", 0) or 0),
+            slot_cache_n=int(resp.get("tokens_cached", 0) or 0),
 
             wall_clock_ms_orchestrator=(t1 - t0) * 1000.0,
             server_prefill_ms=float(timings.get("prompt_ms", 0.0) or 0.0),
@@ -237,6 +287,7 @@ class LlamaClient:
 
             finish_reason=resp.get("stop_type", "") or "",
             truncated=bool(resp.get("truncated", False)),
+            thinking_leak=("<think>" in text or "</think>" in text),
         )
         return text, record
 
@@ -261,7 +312,7 @@ class LlamaClient:
             text, record = self.call(prompt, temperature, seed + attempt, ctx)
             ok, extracted = validator(text)
             record.parse_ok = bool(ok)
-            record.answer_extracted = "" if extracted is None else str(extracted)
+            record.answer_extracted = _as_cell(extracted)
             records.append(record)
             self.writer.write(record)
 

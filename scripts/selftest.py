@@ -12,6 +12,7 @@ retry accounting and what each role is actually shown.
 Exit status is the number of failed checks.
 """
 
+import csv
 import json
 import re
 import sys
@@ -24,9 +25,9 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from masenergy import chat, config, runner, topologies
+from masenergy import band, chat, config, runner, topologies
 from masenergy import datasets as ds
-from masenergy.client import LlamaClient, _CALL_LOCK
+from masenergy.client import LlamaClient, ServerError, _CALL_LOCK
 from masenergy.records import CallRecord, FIELDS, RecordWriter, new_run_id
 
 import prepare_datasets as prep
@@ -117,6 +118,11 @@ EXTRACTION = [
     ("empty slot is a failure", HOTPOTQA, "Answer: <your final answer>", None),
     ("negative number", GSM_HARD, "work\nAnswer: -342927260", "-342927260"),
     ("thousands separators stripped", GSM_HARD, "work\nAnswer: 1,335,907", "1335907"),
+    ("scientific notation survives as one number",
+     GSM_HARD, "work\nAnswer: 2.0107e-06", "2.0107e-06"),
+    ("negative exponent is not split into a trailing 06",
+     GSM_HARD, "work\nAnswer: 5.158e-07", "5.158e-07"),
+    ("leading-dot decimal", GSM_HARD, "work\nAnswer: .5", ".5"),
 ]
 
 GRADING_SPAN = [
@@ -142,6 +148,16 @@ GRADING_NUMERIC = [
     ("four significant figures refused", "0.01456", "0.0145623999", False),
     ("wrong number refused", "49.7", "49.6", False),
     ("unparseable prediction refused", "not a number", "49.6", False),
+    ("scientific notation matches itself", "2.0107e-06", "2.0107e-06", True),
+    ("relative tolerance holds at large magnitude",
+     "2040087.34", "2040087.3384615383", True),
+    ("decimal form of a scientific-notation gold",
+     "0.0000020107", "2.0107e-06", True),
+    ("three significant figures refused at small magnitude",
+     "0.00000201", "2.0107e-06", False),
+    ("a tolerance that is absolute at every scale would accept this",
+     "0.000001", "2.0107e-06", False),
+    ("half a percent off is still wrong", "2050000", "2040087.3384615383", False),
 ]
 
 HOTPOT_ROW = {
@@ -262,6 +278,14 @@ def test_screen_campaign_agreement():
            if c["name"] in config.DATASETS} == set(config.DATASETS))
     check("agreement", "screen numeric grader delegates to the campaign",
           screen._grade_numeric("0.01456", "0.0145623999", ()) is False)
+    check("agreement", "a screen of 15 is contained in a campaign draw of 80",
+          set(ds.nested_sample(1319, 15, config.ORDER_SEED))
+          <= set(ds.nested_sample(1319, 80, config.ORDER_SEED)))
+    check("agreement", "screen and campaign draw through the same sampler",
+          prep._sample_indices(1319, 15, config.ORDER_SEED)
+          == ds.nested_sample(1319, 15, config.ORDER_SEED))
+    check("agreement", "the draw is deterministic across processes",
+          ds.nested_sample(500, 20, 7) == ds.nested_sample(500, 20, 7))
     check("agreement", "runner validator matches the screen validator",
           runner.make_validator(HOTPOTQA)("Answer: Paris")
           == screen._validator(HOTPOTQA)("Answer: Paris"))
@@ -297,6 +321,16 @@ def test_topologies():
           "answered" in client.prompts[config.DEBATE_AGENTS])
     check("topology", "debate seeds are all distinct",
           len(set(client.seeds)) == len(client.seeds))
+    # Round two must replay the agent's own answer. Without it the only answer
+    # in context is the peer's, the agent adopts it, and two agents trade
+    # answers every round while the change-rate check reports healthy churn.
+    round_two = client.prompts[config.DEBATE_AGENTS]
+    check("topology", "debate round two replays the agent's own prior answer",
+          ("Your own previous answer" in round_two)
+          == config.DEBATE_SHOWS_OWN_PRIOR)
+    check("topology", "debate agent sees its own answer, not only the peer's",
+          "Answer: 0" in round_two and "Answer: 1" in round_two,
+          "round two prompt: %r" % round_two[-160:])
 
     client, result = run_topology(
         "planner_worker",
@@ -310,6 +344,15 @@ def test_topologies():
           "Which treaty" in client.prompts[1] and "Luneville" in client.prompts[2])
     check("topology", "workers never see each other",
           "Luneville" not in client.prompts[1])
+    # A subtask alone is not answerable: the planner keeps the numbers. Without
+    # the problem as background the worker fails, exhausts its retries, and the
+    # item costs double the calls of its neighbours for no output.
+    check("topology", "worker carries the problem as background",
+          ("TASK" in client.prompts[1]) == config.PLANNER_WORKER_SHOWS_TASK)
+    check("topology", "planner subtasks reach the record as text, not a list repr",
+          "[" not in client.writer.rows[0].answer_extracted
+          and "Which treaty" in client.writer.rows[0].answer_extracted,
+          "planner row: %r" % client.writer.rows[0].answer_extracted)
 
     bad_plan = ["no numbered list here"] * (config.MAX_REPROMPTS + 1)
     client, result = run_topology(
@@ -357,6 +400,121 @@ def test_topologies():
           % (predicted, lo, hi), lo <= predicted <= hi)
 
 
+SERVER_DEFAULTED_SAMPLERS = ("top_p", "top_k", "min_p", "typical_p",
+                             "repeat_penalty", "presence_penalty",
+                             "frequency_penalty", "mirostat")
+
+
+def test_payload_and_cache():
+    client = StubClient()
+    payload = client._payload("p", 0.7, 5)
+    missing = [k for k in SERVER_DEFAULTED_SAMPLERS if k not in payload]
+    # A sampler left out of the payload still runs, just on llama.cpp's default
+    # and outside config_hash(). min_p defaults to 0.05, which clips the tail
+    # the temperature sweep exists to widen.
+    check("payload", "every server-defaulted sampler is pinned explicitly",
+          not missing, str(missing))
+    check("payload", "prompt caching is off on the wire",
+          payload["cache_prompt"] is False)
+    check("payload", "pinned samplers are the recorded ones",
+          payload["min_p"] == config.MIN_P and payload["top_p"] == config.TOP_P
+          and payload["repeat_penalty"] == config.REPEAT_PENALTY)
+
+    snapshot = config.snapshot()[0]
+    unrecorded = [k.upper() for k in SERVER_DEFAULTED_SAMPLERS
+                  if k.upper() not in snapshot]
+    check("payload", "every pinned sampler appears in the config snapshot",
+          not unrecorded, str(unrecorded))
+
+    class Leaky(StubClient):
+        def _post(self, payload):
+            out = super()._post(payload)
+            out["tokens_evaluated"] = 400   # prompt was 400 long
+            out["timings"]["prompt_n"] = 40  # only 40 were prefilled
+            return out
+
+    # A server that serves 360 of 400 prompt tokens from cache spends a
+    # fraction of the energy while the row still claims the whole prompt. That
+    # has to stop the run, not survive into the regression.
+    leaky = Leaky()
+    check("payload", "a live prompt cache aborts the call",
+          _raises_type(ServerError,
+                       lambda: leaky.call("p", 0.7, 1, {"dataset": GSM_HARD})))
+
+    class Failing(StubClient):
+        def _post(self, payload):
+            return {"error": {"message": "context overflow"}}
+
+    check("payload", "a 200 carrying an error body is not a successful call",
+          _raises_type(ServerError,
+                       lambda: Failing().call("p", 0.7, 1, {"dataset": GSM_HARD})))
+
+    class Thinking(StubClient):
+        def _post(self, payload):
+            out = super()._post(payload)
+            out["content"] = "<think>hmm</think>\nAnswer: 42"
+            return out
+
+    _, record = Thinking().call("p", 0.7, 1, {"dataset": GSM_HARD})
+    check("payload", "a think tag in the raw response is flagged",
+          record.thinking_leak is True)
+    check("payload", "the flag survives extraction stripping the tag",
+          ds.extract_answer(GSM_HARD, "<think>hmm</think>\nAnswer: 42") == "42")
+
+
+def test_band():
+    check("band", "the band is %.0f points wide" % (band.BAND_HIGH - band.BAND_LOW),
+          band.BAND_HIGH - band.BAND_LOW == 25.0)
+    lo, hi = band.wilson(8, 15)
+    check("band", "a 15-item screen has an interval wider than the band itself",
+          hi - lo > band.BAND_HIGH - band.BAND_LOW,
+          "n=15 gives %.0f-%.0f, %.0f points wide" % (lo, hi, hi - lo))
+    check("band", "15 items cannot return a verdict",
+          band.verdict(8, 15)[0].startswith("UNRESOLVED"))
+    check("band", "10 items cannot return a verdict",
+          band.verdict(5, 10)[0].startswith("UNRESOLVED"))
+    check("band", "a clear floor is still called at small n",
+          band.verdict(0, 20)[0].startswith("BELOW"))
+    check("band", "a clear ceiling is still called at small n",
+          band.verdict(20, 20)[0].startswith("ABOVE"))
+    check("band", "no data is not a verdict", band.verdict(0, 0)[0] == "NO DATA")
+    need = band.n_for_halfwidth(10.0)
+    warn("band", "campaign N_ITEMS=%d resolves the band to +-10 points"
+         % config.N_ITEMS, config.N_ITEMS >= need,
+         "need %d items per cell for +-10 points, %d for +-5"
+         % (need, band.n_for_halfwidth(5.0)))
+
+
+def test_gold_shape():
+    for dataset, gold, expected in (
+        (GSM_HARD, "25124292", "ok"),
+        (GSM_HARD, "-4487772.5", "ok"),
+        (GSM_HARD, "2.0107e-06", "ok"),
+        (GSM_HARD, "2040087.3384615383", "over_precise"),
+        (GSM_HARD, "7.1466666667", "over_precise"),
+        (GSM_HARD, "not a number", "unparseable"),
+        (HOTPOTQA, "Animation", "ok"),
+        (HOTPOTQA, "Arthur's Magazine", "ok"),
+        (HOTPOTQA, "It was held in France from 10 June to 12 July 1998.", "long_span"),
+        (HOTPOTQA, "", "unparseable"),
+    ):
+        got = ds.gold_shape(dataset, gold)
+        check("gold shape", "%s %r -> %s" % (dataset, gold[:34], expected),
+              got == expected, "" if got == expected else "got %s" % got)
+    check("gold shape", "classification never looks at a prediction",
+          "predict" not in ds.gold_shape.__code__.co_varnames)
+
+
+def _raises_type(exc_type, fn):
+    try:
+        fn()
+    except exc_type:
+        return True
+    except Exception:
+        return False
+    return False
+
+
 def test_serialisation():
     client = StubClient(["Answer: 1"] * 8)
     errors = []
@@ -399,6 +557,12 @@ def test_records():
               rows[0]["prompt_n"] == "11" and rows[0]["predicted_n"] == "7")
         check("records", "no field merges the two counts",
               not any(f in FIELDS for f in ("total_tokens", "tokens", "n_tokens")))
+        check("records", "prompt length is stored beside prompt tokens processed",
+              rows[0]["prompt_n_total"] == "11" and "slot_cache_n" in rows[0])
+        check("records", "no ungraded correctness column on a call row",
+              not {"correct", "f1"} & set(FIELDS))
+        check("records", "thinking leak is recorded from the raw response",
+              rows[0]["thinking_leak"] == "False")
         meta = json.loads(path.with_suffix(".meta.json").read_text())
         check("records", "metadata sidecar records the schema",
               meta.get("schema_fields") == list(FIELDS))
@@ -410,6 +574,71 @@ def test_records():
 
         check("records", "run id carries the config hash",
               new_run_id(config.config_hash()).endswith(config.config_hash()))
+
+        stale = Path(tmp) / "stale.csv"
+        stale.write_text("run_id,dataset\nx,y\n", encoding="utf-8")
+        check("records", "appending to a file with a different schema is refused",
+              _raises_runtime(lambda: RecordWriter(stale)))
+
+
+def test_runner_end_to_end():
+    """One real block, stub model, real files. Covers what unit checks cannot.
+
+    The writer lifetime, the task table, resume, and the fact that a block
+    which is already finished does not leave a closed writer bound to the
+    client for the next block to trip over.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        (root / "data" / "items").mkdir(parents=True)
+        for name in config.DATASETS:
+            items = [{"id": "%s-%05d" % (name, i), "rank": i,
+                      "question": "q%d" % i, "answer": "42",
+                      "context": "c%d" % i if name == HOTPOTQA else None,
+                      "level": None}
+                     for i in range(2)]
+            (root / "data" / "items" / ("items_%s.json" % name)).write_text(
+                json.dumps({"sha256": ds.items_hash(items), "items": items}))
+
+        client = StubClient([answered("42")] * 4000)
+        run = runner.Runner(client, root, out_dir=root / "out", run_id="selftest")
+        dataset, condition, temperature = config.DATASETS[0], "baseline", 0.2
+
+        executed = run.run_block(dataset, condition, temperature)
+        check("runner", "a block runs every item against every seed",
+              executed == 2 * len(config.SEEDS), "executed %d" % executed)
+        check("runner", "the writer is released when the block ends",
+              client.writer is None)
+
+        tasks = list(csv.DictReader(
+            open(run.out / ("%s.tasks.csv" % runner.block_name(
+                dataset, condition, temperature)), encoding="utf-8")))
+        check("runner", "one task row per item and seed", len(tasks) == executed)
+        check("runner", "task header matches the schema",
+              tuple(tasks[0]) == runner.TASK_FIELDS)
+        check("runner", "grading reaches the task table",
+              all(r["correct"] == "True" for r in tasks))
+        check("runner", "gold shape travels with the task row",
+              all(r["gold_shape"] == "ok" for r in tasks))
+
+        again = run.run_block(dataset, condition, temperature)
+        check("runner", "a finished block resumes to zero work", again == 0)
+        check("runner", "a skipped block leaves no writer bound",
+              client.writer is None)
+
+        client.writer = None
+        run.warm_up()
+        check("runner", "warm-up calls are never written to disk",
+              client.writer is None and len(client.prompts) > executed)
+
+        blocks = runner.ordered_blocks()
+        check("runner", "block order is a permutation of the %d blocks"
+              % len(config.blocks()),
+              sorted(blocks) == sorted(config.blocks()))
+        check("runner", "block order is deterministic given ORDER_SEED",
+              blocks == runner.ordered_blocks())
+        check("runner", "block order is not the natural order",
+              blocks != list(config.blocks()))
 
 
 def test_items_and_config():
@@ -431,6 +660,21 @@ def test_items_and_config():
           len(config.cells()) == 12 and len(config.blocks()) == 24)
     check("config", "validate blocks while parameters are unset",
           _raises_runtime(config.validate))
+
+    # The dev server is launched by a shell script that does not read
+    # LLAMA_FLAGS or CTX_SIZE, so a dry run can be measured at a context the
+    # campaign will never use and nothing says so.
+    serve = ROOT / "scripts" / "serve_dev.sh"
+    if serve.exists():
+        text = serve.read_text(encoding="utf-8")
+        check("config", "dev server takes its context size from config",
+              "config.CTX_SIZE" in text,
+              "serve_dev.sh hard-codes a ctx; a dry run measured at a context "
+              "the campaign will not use sizes nothing")
+        check("config", "dev server launches from LLAMA_FLAGS",
+              "config.LLAMA_FLAGS" in text,
+              "flags restated in the shell script are frozen parameters that "
+              "config_hash() never sees")
 
     flags = config.LLAMA_FLAGS
     pairs = [(flags[i], flags[i + 1] if i + 1 < len(flags) else None)
@@ -512,9 +756,10 @@ def _raises_runtime(fn):
 
 
 def main():
-    for fn in (test_extraction, test_grading, test_prompt_surface, test_seed_spacing,
-               test_screen_campaign_agreement, test_topologies, test_serialisation,
-               test_records, test_items_and_config):
+    for fn in (test_extraction, test_grading, test_gold_shape, test_prompt_surface,
+               test_seed_spacing, test_screen_campaign_agreement, test_topologies,
+               test_payload_and_cache, test_band, test_serialisation,
+               test_records, test_runner_end_to_end, test_items_and_config):
         fn()
 
     section = None

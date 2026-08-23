@@ -27,17 +27,38 @@ src/masenergy/
   client.py             call() - the single choke point: GPIO + HTTP + log
   topologies/           baseline, debate, solver_critic, planner_worker
   prompts/              Role prompts, one file each
-  datasets.py           GSM8K / HotpotQA loading, answer extraction, grading
+  datasets.py           gsm-hard / HotpotQA loading, extraction, grading
+  band.py               The 45-70% band, and whether an n can decide it
   runner.py             Driver: configs x items x seeds, randomised order
   records.py            Append-only per-call log
 firmware/esp32/         Sampler firmware
 host/capture.py         Laptop-side ESP32 serial capture
 scripts/
   jetson_prepare.sh     nvpmodel, jetson_clocks, fan pin, timer masking
-  serve.sh              llama.cpp launch with pinned flags
+  serve_dev.sh          llama.cpp launch, ctx and flags read from config.py
+  selftest.py           Whole pipeline, no server, no network, no hardware
+  diagnose.py           Self test plus a diagnosis of every run on disk
+  screen_datasets.py    Stage-1 candidate screen
+  prepare_datasets.py   Freeze the item sets (laptop only)
+  dry_run.py            Model-level go/no-go against a live server
 analysis/               Regressions and figures
 data/raw/               Run outputs (gitignored)
 ```
+
+## Checking the pipeline
+
+No server, no network, no hardware:
+
+```
+python3 scripts/selftest.py     # every check, exit status = failures
+python3 scripts/diagnose.py     # the same, plus what the recorded runs say
+python3 scripts/diagnose.py --brief --strict
+```
+
+`diagnose.py` re-reads every call table under `data/raw` and `data/screen`,
+re-grades the recorded answers under several rules, and reports where the
+difference between measured accuracy and the band comes from. `data/raw` is
+gitignored, so on a fresh clone it reports only what it can check offline.
 
 ## Frozen parameters
 

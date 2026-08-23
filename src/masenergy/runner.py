@@ -29,7 +29,7 @@ from .records import RecordWriter, new_run_id, utc_now
 TASK_FIELDS = (
     "run_id", "config_hash", "timestamp_utc",
     "dataset", "item_id", "topology", "temperature", "seed", "repetition",
-    "n_calls", "answer_extracted", "gold",
+    "n_calls", "answer_extracted", "gold", "gold_shape",
     "parse_ok", "correct", "f1", "plan_ok", "wall_s",
 )
 
@@ -164,42 +164,60 @@ class Runner:
         executed = 0
 
         with RecordWriter(calls_path, meta) as writer:
+            # Rebound per block and cleared afterwards. A client still holding
+            # the previous block's writer would raise on a closed file at the
+            # first call of the next block, which is a strange way to find out
+            # the rows went nowhere.
             self.client.writer = writer
-            for item, seed in remaining:
-                if _STOP["requested"]:
-                    break
-                started = time.monotonic()
-                ctx = {"dataset": dataset, "item_id": item["id"],
-                       "repetition": config.SEEDS.index(seed)}
-                task = ds.build_task_text(dataset, item)
+            try:
+                executed = self._run_tasks(remaining, dataset, condition,
+                                           temperature, tasks_path, idle_path,
+                                           validator)
+            finally:
+                self.client.writer = None
 
-                result = topologies.get(condition)(
-                    self.client, task, temperature, seed, ctx, validator
-                )
-                grade = ds.grade(dataset, result["answer"], item["answer"])
-                elapsed = time.monotonic() - started
+        return executed
 
-                _append(tasks_path, TASK_FIELDS, {
-                    "run_id": self.run_id,
-                    "config_hash": config.config_hash(),
-                    "timestamp_utc": utc_now(),
-                    "dataset": dataset, "item_id": item["id"],
-                    "topology": condition, "temperature": temperature,
-                    "seed": seed, "repetition": ctx["repetition"],
-                    "n_calls": result["n_calls"],
-                    "answer_extracted": result["answer"] or "",
-                    "gold": item["answer"],
-                    "parse_ok": grade["parse_ok"],
-                    "correct": grade["correct"],
-                    "f1": grade["f1"],
-                    "plan_ok": result.get("plan_ok", ""),
-                    "wall_s": round(elapsed, 3),
-                })
+    def _run_tasks(self, remaining, dataset, condition, temperature,
+                   tasks_path, idle_path, validator):
+        executed = 0
+        for item, seed in remaining:
+            if _STOP["requested"]:
+                break
+            started = time.monotonic()
+            ctx = {"dataset": dataset, "item_id": item["id"],
+                   "repetition": config.SEEDS.index(seed)}
+            task = ds.build_task_text(dataset, item)
 
-                self.calls_since_idle += result["n_calls"]
-                self.durations.append(elapsed)
-                executed += 1
-                self._maybe_idle(dataset, condition, temperature, idle_path)
+            result = topologies.get(condition)(
+                self.client, task, temperature, seed, ctx, validator
+            )
+            grade = ds.grade(dataset, result["answer"], item["answer"],
+                             item.get("aliases"))
+            elapsed = time.monotonic() - started
+
+            _append(tasks_path, TASK_FIELDS, {
+                "run_id": self.run_id,
+                "config_hash": config.config_hash(),
+                "timestamp_utc": utc_now(),
+                "dataset": dataset, "item_id": item["id"],
+                "topology": condition, "temperature": temperature,
+                "seed": seed, "repetition": ctx["repetition"],
+                "n_calls": result["n_calls"],
+                "answer_extracted": result["answer"] or "",
+                "gold": item["answer"],
+                "gold_shape": ds.gold_shape(dataset, item["answer"]),
+                "parse_ok": grade["parse_ok"],
+                "correct": grade["correct"],
+                "f1": grade["f1"],
+                "plan_ok": result.get("plan_ok", ""),
+                "wall_s": round(elapsed, 3),
+            })
+
+            self.calls_since_idle += result["n_calls"]
+            self.durations.append(elapsed)
+            executed += 1
+            self._maybe_idle(dataset, condition, temperature, idle_path)
 
         return executed
 
@@ -220,14 +238,24 @@ class Runner:
                          % (self.run_id, len(blocks), total))
         self.warm_up()
 
+        # Counted from the task tables on disk rather than from the block
+        # index, so a resumed run does not report the eta of a fresh one.
+        remaining_total = sum(
+            per_block - len(completed_tasks(
+                self.out / ("%s.tasks.csv" % block_name(d, c, t))))
+            for d, c, t in blocks
+        )
+
         completed = 0
         for i, (dataset, condition, temperature) in enumerate(blocks, 1):
             if _STOP["requested"]:
                 break
-            completed += self.run_block(dataset, condition, temperature)
-            left = total - (i * per_block)
-            sys.stderr.write("  block %d/%d done, eta %s\n"
-                             % (i, len(blocks), self.eta(max(left, 0))))
+            done = self.run_block(dataset, condition, temperature)
+            completed += done
+            remaining_total -= done
+            sys.stderr.write("  block %d/%d done, %d tasks left, eta %s\n"
+                             % (i, len(blocks), max(remaining_total, 0),
+                                self.eta(max(remaining_total, 0))))
 
         sys.stderr.write("\n%d tasks executed this session.\n" % completed)
         return completed

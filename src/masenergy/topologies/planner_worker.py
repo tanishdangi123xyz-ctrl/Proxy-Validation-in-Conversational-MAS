@@ -5,6 +5,13 @@ comparable across items. If the planner fails to emit a usable plan after its
 retries, workers are dispatched on the raw task: the structure and call count
 are preserved and the failure is visible in the planner's parse_ok, rather
 than the item silently costing fewer calls than its peers.
+
+The planner is told to write self-contained subtasks and a 1.7B model does not
+comply: it writes "How much did Mishka spend on the shorts?" and keeps the
+prices to itself. A worker handed that alone cannot answer, burns every retry,
+and the item costs twice the calls of its neighbours while producing nothing.
+The problem statement therefore travels with the subtask as background.
+Workers still never see each other, which is what this topology is about.
 """
 
 import re
@@ -43,8 +50,13 @@ def run(client, task, temperature, seed, ctx, validator):
     for n, subtask in enumerate(subtasks):
         context = dict(ctx, topology="planner_worker", role="worker_%d" % (n + 1),
                        round_index=1, call_index_in_task=index)
+        if config.PLANNER_WORKER_SHOWS_TASK:
+            worker_user = ("Background, for reference only:\n%s\n\n"
+                           "Your subtask:\n%s" % (task, subtask))
+        else:
+            worker_user = subtask
         text, _, _, recs = client.call_with_retries(
-            chat.build(worker_system, subtask), temperature,
+            chat.build(worker_system, worker_user), temperature,
             chat.call_seed(seed, index), context, validator
         )
         records.extend(recs)

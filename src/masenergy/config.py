@@ -47,14 +47,43 @@ CONDITIONS = ("baseline", "debate", "solver_critic", "planner_worker")
 TEMPERATURES = (0.2, 0.7, 1.0)
 
 MAX_TOKENS = 512
+
+# Every sampler llama.cpp has a default for is pinned here and sent on every
+# request. An omitted sampler is not an absent sampler: the server applies its
+# own default and config_hash() never sees it. min_p in particular defaults to
+# 0.05, which clips exactly the distribution tail the temperature sweep is
+# meant to widen.
 TOP_P = 1.0
 TOP_K = 0
+MIN_P = 0.0
+TYPICAL_P = 1.0
+REPEAT_PENALTY = 1.0
+PRESENCE_PENALTY = 0.0
+FREQUENCY_PENALTY = 0.0
+MIROSTAT = 0
 
 DEBATE_AGENTS = 2
 DEBATE_ROUNDS = 2
 DEBATE_AGGREGATION = "synthesis"
 SOLVER_CRITIC_MAX_ITERS = 3
 PLANNER_WORKER_SUBTASKS = 2
+
+# Each call is stateless, so anything a role is supposed to remember has to be
+# put back into its prompt. Both of these were absent and both broke the
+# topology they belong to. Left as parameters rather than hard-coded so the
+# broken form stays reachable and stays recorded in config_hash().
+#
+# DEBATE_SHOWS_OWN_PRIOR: without it an agent asked to "reconsider your own
+# answer" is shown only its peer's, and adopts it. Two agents then trade
+# answers every round, which registers as a high change rate while the
+# topology is doing no deliberation at all.
+#
+# PLANNER_WORKER_SHOWS_TASK: without it a worker sees a subtask like "How much
+# did Mishka spend on the shorts?" with no prices anywhere in its context. It
+# cannot answer, all its retries fail, and the item costs double the calls of
+# its neighbours for no output.
+DEBATE_SHOWS_OWN_PRIOR = True
+PLANNER_WORKER_SHOWS_TASK = True
 
 MAX_REPROMPTS = 2
 
@@ -108,7 +137,15 @@ def blocks():
 
 
 def calls_per_item():
-    """Expected model calls per item, summed over all four conditions."""
+    """Expected model calls per item, summed over all four conditions.
+
+    A planning figure, not a guarantee. Three of the four conditions have a
+    fixed call count; solver_critic runs between 2 and 2*SOLVER_CRITIC_MAX_ITERS
+    calls depending on when the critic accepts, and the midpoint is used here.
+    Nothing below counts reprompts, so the true total is this figure inflated by
+    the parse-failure rate, which is itself a function of temperature. Use
+    estimated_calls() to size a campaign, never to reconcile a finished one.
+    """
     debate = DEBATE_AGENTS * DEBATE_ROUNDS + 1
     solver_critic = 2 * (SOLVER_CRITIC_MAX_ITERS + 1) / 2.0
     planner_worker = 1 + PLANNER_WORKER_SUBTASKS + 1

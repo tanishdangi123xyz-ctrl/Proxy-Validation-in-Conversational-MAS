@@ -32,7 +32,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
-from masenergy import config, topologies
+from masenergy import band, config, topologies
 from masenergy import datasets as ds
 from masenergy.client import LlamaClient
 from masenergy.records import RecordWriter, new_run_id
@@ -43,6 +43,22 @@ TOPOLOGY_TEMPERATURE = 0.7
 
 def pct(part, whole):
     return 100.0 * part / whole if whole else 0.0
+
+
+def _spread(items, n):
+    """Evenly spaced subsample across the frozen set.
+
+    prepare_datasets stores items sorted by source row index, so a prefix is
+    not a random subsample: it clusters in the low-index region of the
+    benchmark. Striding keeps a small dry run representative of the 80 items
+    the campaign will actually run.
+    """
+    if n <= 0:
+        raise ValueError("--items must be at least 1")
+    if n >= len(items):
+        return list(items)
+    stride = len(items) // n
+    return [items[i * stride] for i in range(n)]
 
 
 def run(n_items, n_topology_items, out_dir, port):
@@ -69,7 +85,7 @@ def run(n_items, n_topology_items, out_dir, port):
             sys.stderr.write("%s: %d items, sha %s\n"
                              % (dataset, len(payload["items"]),
                                 payload["sha256"][:16]))
-            items = payload["items"][:n_items]
+            items = _spread(payload["items"], n_items)
             validator = make_validator(dataset)
 
             for temperature in config.TEMPERATURES:
@@ -94,7 +110,11 @@ def run(n_items, n_topology_items, out_dir, port):
                     result = topologies.get(name)(
                         client, ds.build_task_text(dataset, item),
                         TOPOLOGY_TEMPERATURE, 101,
-                        {"dataset": dataset, "item_id": item["id"], "repetition": 0},
+                        # repetition 1 marks the topology sweep. Baseline runs
+                        # in both sweeps, and at t=0.7 its rows would otherwise
+                        # pool into the temperature sweep and give that one
+                        # temperature a larger n than its neighbours.
+                        {"dataset": dataset, "item_id": item["id"], "repetition": 1},
                         validator)
                     hit = ds.grade(dataset, result["answer"], item["answer"])["correct"]
                     stats["items"] += 1
@@ -124,8 +144,13 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
     print("=" * 72)
 
     print("\n1. FORMAT ADHERENCE  (parse rate should fall as temperature rises)")
+    print("   baseline calls only. The other topologies run at one temperature")
+    print("   and use different validators, so mixing them in would compare")
+    print("   topology composition rather than temperature.")
     by_t = defaultdict(lambda: [0, 0])
     for r in rows:
+        if r["topology"] != "baseline" or r["repetition"] != "0":
+            continue
         bucket = by_t[float(r["temperature"])]
         bucket[1] += 1
         bucket[0] += r["parse_ok"] == "True"
@@ -136,17 +161,19 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
     print("   retries triggered: %d of %d calls (%.1f%%)"
           % (retries, len(rows), pct(retries, len(rows))))
 
-    print("\n2. BASELINE ACCURACY  (target band 45-70%)")
+    print("\n2. BASELINE ACCURACY  (target band %.0f-%.0f%%, 95%% Wilson interval)"
+          % (band.BAND_LOW, band.BAND_HIGH))
     for (dataset, temperature), (correct, total) in sorted(accuracy.items()):
-        value = pct(correct, total)
-        if value > 70:
-            verdict = "too easy, ceiling"
-        elif value < 45:
-            verdict = "too hard, floor"
-        else:
-            verdict = "IN BAND"
-        print("   %-10s t=%.1f  %5.1f%%  (%d of %d)   %s"
-              % (dataset, temperature, value, correct, total, verdict))
+        print("   %-10s t=%.1f  %s"
+              % (dataset, temperature, band.format_verdict(correct, total)))
+    any_n = max((t for _, t in accuracy.values()), default=0)
+    if any_n:
+        lo, hi = band.wilson(int(round(0.55 * any_n)), any_n)
+        print("   at n=%d per cell the interval is %.0f points wide and the band is"
+              % (any_n, hi - lo))
+        print("   %.0f, so a bare percentage here decides nothing. %d items would give"
+              % (band.BAND_HIGH - band.BAND_LOW, band.n_for_halfwidth(10.0)))
+        print("   +-10 points, %d would give +-5." % band.n_for_halfwidth(5.0))
 
     print("\n3. DEBATE ANSWER-CHANGE RATE  (need >10%)")
     per_dataset = defaultdict(lambda: [0, 0])
@@ -213,14 +240,43 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
     print("   CTX_SIZE %d leaves %d tokens of headroom   %s"
           % (config.CTX_SIZE, headroom,
              "OK" if headroom > 0 else "*** CTX_SIZE TOO SMALL ***"))
-    truncated = sum(r["truncated"] == "True" for r in rows)
-    print("   truncated responses: %d  (nonzero means MAX_TOKENS is clipping)"
-          % truncated)
+    # stop_type, not the truncated flag. llama.cpp sets truncated when the
+    # prompt overran the context and was cut, which --no-context-shift turns
+    # into an error instead, so it is false on every row ever recorded. A
+    # generation that ran into n_predict reports stop_type "limit".
+    clipped = sum(r["finish_reason"] == "limit" for r in rows)
+    ctx_truncated = sum(r["truncated"] == "True" for r in rows)
+    print("   hit MAX_TOKENS (%d): %d of %d calls (%.1f%%)   %s"
+          % (config.MAX_TOKENS, clipped, len(rows), pct(clipped, len(rows)),
+             "" if not clipped else "*** OUTPUT LENGTH IS CENSORED ***"))
+    print("   prompt truncated by the server: %d" % ctx_truncated)
 
     print("\n6. THINKING SUPPRESSION")
-    leak = sum("<think>" in (r["answer_extracted"] or "") for r in rows)
-    print("   think-tag leakage into extracted answers: %d" % leak)
+    # Read off the record flag, which is set from the raw response. Looking for
+    # "<think>" in answer_extracted can never find anything: _unwrap strips
+    # every angle-bracket span before the answer is stored, so that check was
+    # reporting zero regardless of what the model emitted.
+    leak = sum(r.get("thinking_leak") == "True" for r in rows)
+    print("   responses containing a think tag: %d of %d   %s"
+          % (leak, len(rows), "OK" if not leak else "*** THINKING NOT SUPPRESSED ***"))
     print("   eyeball a raw response too if output medians look unexpectedly long")
+
+    print("\n7. GOLD ANSWER SHAPE  (references the grader cannot score)")
+    for dataset in config.DATASETS:
+        payload = ds.load_items(
+            ROOT / "data" / "items" / ("items_%s.json" % dataset))
+        shapes = defaultdict(int)
+        for item in payload["items"]:
+            shapes[ds.gold_shape(dataset, item["answer"])] += 1
+        total = sum(shapes.values())
+        bad = total - shapes["ok"]
+        print("   %-10s %d of %d items carry a reference no correct answer can "
+              "match: %s" % (dataset, bad, total,
+                             dict((k, v) for k, v in sorted(shapes.items())
+                                  if k != "ok") or "none"))
+        if bad:
+            print("   %-10s that is %.1f points of accuracy the model cannot earn"
+                  % ("", pct(bad, total)))
     print()
 
 

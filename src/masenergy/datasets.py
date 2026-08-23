@@ -10,6 +10,8 @@ accuracy would differ by topology for reasons unrelated to the topology.
 """
 
 import json
+import math
+import random
 import re
 import string
 import unicodedata
@@ -18,7 +20,9 @@ GSM_HARD = "gsm_hard"
 HOTPOTQA = "hotpotqa"
 
 _ANSWER_MARKER = re.compile(r"answer\s*[:\-]\s*(.+)", re.IGNORECASE)
-_NUMBER = re.compile(r"-?\$?\d[\d,]*\.?\d*")
+_NUMBER = re.compile(
+    r"[-+]?\$?(?:\d[\d,]*(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d+)?"
+)
 _TEMPLATE_SLOT = re.compile(r"<[^<>]{0,80}>")
 _BOXED = re.compile(r"\\boxed\s*\{(.*)\}", re.S)
 _DELIMITERS_ONLY = re.compile(r"^[\s$\\()\[\]{}*`.,:;]*$")
@@ -28,6 +32,38 @@ _WRAPPERS = (("$$", "$$"), ("$", "$"), ("\\[", "\\]"), ("\\(", "\\)"),
 
 CONTAINMENT_FACTOR = 2
 CONTAINMENT_SLACK = 4
+
+# Numeric agreement is relative, not absolute. gsm-hard golds are the output of
+# a Python program, so a quarter of them are floats carrying ten to seventeen
+# significant digits (2040087.3384615383) and three are in scientific notation
+# (2.0107e-06). A fixed absolute threshold means two different things at those
+# two magnitudes: on an eleven-digit integer it demands exactness, and on a gold
+# of 2.0107e-06 it accepts a fifty percent error. One relative threshold means
+# the same thing everywhere. The absolute floor only guards a gold of zero.
+NUMERIC_REL_TOL = 1e-4
+NUMERIC_ZERO_TOL = 1e-9
+
+
+def nested_sample(pool_size, n_items, seed):
+    """Indices of n_items drawn from a pool, nested across n_items.
+
+    A prefix of one fixed permutation, so a draw of 80 always contains the
+    draw of 15 taken with the same seed. That is the property the screen
+    depends on: it admits a dataset on 15 items and the campaign then runs 80,
+    and those two numbers only describe the same thing if the 15 are among the
+    80.
+
+    random.sample happens to nest for the sizes currently in use, but only
+    because CPython picks its selection-set algorithm for both. It switches to
+    a pool-based algorithm once k grows past a threshold that depends on n, and
+    the nesting stops holding with nothing to show it stopped. This is the same
+    guarantee written down instead of inherited.
+
+    Returned sorted, so the item file stays in source-row order.
+    """
+    order = list(range(pool_size))
+    random.Random(seed).shuffle(order)
+    return sorted(order[:n_items])
 
 
 def load_items(path):
@@ -75,6 +111,23 @@ def render_context_task(context, question):
     and the band the dataset was selected on describes nothing.
     """
     return "Context:\n%s\n\nQuestion: %s" % (context, question.strip())
+
+
+def numbers_match(predicted, gold):
+    """True if two numeric strings agree to NUMERIC_REL_TOL.
+
+    Returns False rather than raising on anything unparseable, so a prose
+    answer that reached the numeric branch is simply wrong, not a crash.
+    """
+    try:
+        p = float(_strip_number(predicted))
+        g = float(_strip_number(gold))
+    except (TypeError, ValueError):
+        return False
+    if math.isnan(p) or math.isnan(g) or math.isinf(p) or math.isinf(g):
+        return p == g
+    tol = NUMERIC_ZERO_TOL if g == 0.0 else NUMERIC_REL_TOL * abs(g)
+    return abs(p - g) <= tol
 
 
 def _strip_number(text):
@@ -221,16 +274,57 @@ def grade(dataset, predicted, gold, aliases=None):
         return {"parse_ok": False, "correct": False, "f1": 0.0}
 
     if dataset == GSM_HARD:
-        try:
-            ok = abs(float(_strip_number(predicted)) - float(_strip_number(gold))) < 1e-6
-        except ValueError:
-            ok = False
+        ok = numbers_match(predicted, gold)
         return {"parse_ok": True, "correct": ok, "f1": float(ok)}
 
     if dataset == HOTPOTQA:
         ok = span_correct(predicted, gold, aliases)
         return {"parse_ok": True, "correct": ok, "f1": _f1(predicted, gold)}
 
+    raise ValueError("Unknown dataset: %s" % dataset)
+
+
+SPAN_GOLD_MAX_TOKENS = 4
+NUMERIC_GOLD_MAX_DECIMALS = 4
+
+
+def _decimal_places(text):
+    """Digits after the decimal point in the mantissa of a numeric string."""
+    mantissa = str(text).split("e")[0].split("E")[0]
+    return len(mantissa.split(".")[1]) if "." in mantissa else 0
+
+
+def gold_shape(dataset, gold):
+    """Classify a gold answer by whether the grader can ever score it.
+
+    Model-blind by construction: it looks only at the reference string, never
+    at a prediction. That distinction matters. Dropping items because the model
+    got them wrong destroys the sample; dropping items whose reference cannot be
+    matched by any correct answer removes an instrument fault. Returns one of
+    "ok", "long_span", "over_precise", or "unparseable".
+
+    A span gold longer than SPAN_GOLD_MAX_TOKENS is a sentence, not an answer:
+    contains_gold bounds the prediction at roughly twice the gold length, so a
+    model that answers the question correctly and tersely is marked wrong for
+    not reciting the sentence. A numeric gold carrying more than
+    NUMERIC_GOLD_MAX_SIGFIGS significant digits cannot be reproduced by a model
+    doing arithmetic in prose.
+    """
+    text = "" if gold is None else str(gold).strip()
+    if not text:
+        return "unparseable"
+    if dataset == GSM_HARD:
+        try:
+            float(_strip_number(text))
+        except (TypeError, ValueError):
+            return "unparseable"
+        if _decimal_places(text) > NUMERIC_GOLD_MAX_DECIMALS:
+            return "over_precise"
+        return "ok"
+    if dataset == HOTPOTQA:
+        if len(_normalise(text).split()) > SPAN_GOLD_MAX_TOKENS:
+            return "long_span"
+        return "ok"
     raise ValueError("Unknown dataset: %s" % dataset)
 
 
