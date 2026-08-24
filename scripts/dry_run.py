@@ -61,10 +61,11 @@ def _spread(items, n):
     return [items[i * stride] for i in range(n)]
 
 
-def run(n_items, n_topology_items, out_dir, port):
+def run(n_items, n_topology_items, out_dir, port, debug_truncated_dir=None):
     run_id = new_run_id(config.config_hash())
     out = Path(out_dir) / ("dry_%s.calls.csv" % run_id)
-    client = LlamaClient(None, run_id=run_id, port=port)
+    client = LlamaClient(None, run_id=run_id, port=port,
+                         debug_truncated_dir=debug_truncated_dir)
 
     if not client.health():
         sys.exit("No server answering on port %d. Start scripts/serve_dev.sh first." % port)
@@ -133,10 +134,12 @@ def run(n_items, n_topology_items, out_dir, port):
                     sys.stderr.write("+" if hit else ".")
                 sys.stderr.write("  %d calls\n" % stats["calls"])
 
-    report(out, accuracy, topology_stats, debate_answers, critic_traces)
+    report(out, accuracy, topology_stats, debate_answers, critic_traces,
+           n_topology_items)
 
 
-def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
+def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces,
+           n_topology_items):
     rows = list(csv.DictReader(open(calls_path, encoding="utf-8")))
     print("\n" + "=" * 72)
     print("DRY RUN REPORT   %d call records   config %s"
@@ -176,6 +179,9 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
         print("   +-10 points, %d would give +-5." % band.n_for_halfwidth(5.0))
 
     print("\n3. DEBATE ANSWER-CHANGE RATE  (need >10%)")
+    print("   base: --topology-items %d per dataset, independent of --items"
+          " above. Raising --items alone does not narrow this check."
+          % n_topology_items)
     per_dataset = defaultdict(lambda: [0, 0])
     for (dataset, _, _), rounds in debate_answers.items():
         if 1 in rounds and 2 in rounds:
@@ -190,7 +196,8 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces):
         print("   %-10s %5.1f%%  (%d of %d agent-rounds)  %s"
               % (dataset, pct(changed, total), changed, total, verdict))
 
-    print("\n4. TOPOLOGY BEHAVIOUR  (t=%.1f)" % TOPOLOGY_TEMPERATURE)
+    print("\n4. TOPOLOGY BEHAVIOUR  (t=%.1f, --topology-items %d per dataset)"
+          % (TOPOLOGY_TEMPERATURE, n_topology_items))
     print("   %-10s %-14s %6s %7s %8s %9s %9s"
           % ("dataset", "topology", "acc", "calls", "calls/it", "prompt/it", "output/it"))
     for (dataset, name), s in sorted(topology_stats.items()):
@@ -288,5 +295,9 @@ if __name__ == "__main__":
                     help="items per dataset for the four-topology sweep")
     ap.add_argument("--port", type=int, default=config.SERVER_PORT)
     ap.add_argument("--out", default=str(ROOT / "data" / "raw"))
+    ap.add_argument("--debug-truncated", default=None,
+                    help="dump prompt+completion here for every call that "
+                         "hits MAX_TOKENS. Off by default; written after the "
+                         "trigger goes low, so it cannot affect a measurement.")
     a = ap.parse_args()
-    run(a.items, a.topology_items, a.out, a.port)
+    run(a.items, a.topology_items, a.out, a.port, a.debug_truncated)

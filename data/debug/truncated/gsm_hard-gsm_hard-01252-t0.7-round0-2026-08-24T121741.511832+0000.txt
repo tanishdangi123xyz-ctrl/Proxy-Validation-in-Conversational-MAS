@@ -1,0 +1,76 @@
+PROMPT
+======
+<|im_start|>system
+You are solving a problem.
+
+Work through the problem step by step, showing your reasoning in full.
+
+Then end your response with a final line that starts with "Answer:" followed by the answer alone: a number, a name, or a short phrase, with no restatement of the question and no explanation on that line. Brevity applies only to that final line. The reasoning above it should be as long as the problem needs.<|im_end|>
+<|im_start|>user
+Elise has been selling her Dad's collection of 250 books for three years. Each book sells at 20$, and she sold twice as many books in the first year as she has sold in the current year. There are currently 50 unsold books, and her sales number this year is 5715521. What's the total amount of money she earned in the second year?<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+
+COMPLETION (cut off at MAX_TOKENS)
+===================================
+Let's break down the problem step by step.
+
+1. **Total books sold in the current year**: 5,715,521 dollars.
+
+2. **Sales in the current year**: 5,715,521 dollars.
+
+3. **Books sold in the first year**: Twice the books sold in the current year.
+
+   - First year sales = 2 × 5,715,521 = 11,431,042 books.
+
+4. **Total books sold over three years**: 250 books.
+
+   - Total books sold = 250.
+
+5. **Unsold books**: 50.
+
+   - Total books sold = Total books - Unsold books = 250 - 50 = 200.
+
+6. **Books sold in the first year**: 200.
+
+   - First year sales = 200 books.
+
+7. **Books sold in the current year**: 200.
+
+   - Current year sales = 200 books.
+
+8. **Books sold in the second year**: Total books sold - (Books sold in first year + Books sold in current year) = 200 - (200 + 200) = -200.
+
+But this is not possible, so we must re-evaluate.
+
+Let's recompute using the given sales number for the current year.
+
+1. **Total books sold in the current year**: 5,715,521 dollars.
+
+2. **Books sold in the current year**: 5,715,521 dollars.
+
+3. **Books sold in the first year**: Twice the books sold in the current year.
+
+   - First year sales = 2 × 5,715,521 = 11,431,042 books.
+
+4. **Total books sold over three years**: 250 books.
+
+   - Total books sold = 250.
+
+5. **Unsold books**: 50.
+
+   - Total books sold = 250 - 50 = 200.
+
+6. **Books sold in the first year**: 200.
+
+   - First year sales = 200 books.
+
+7. **Books sold in the current year**: 200.
+
+   - Current year sales = 200 books.
+
+8.

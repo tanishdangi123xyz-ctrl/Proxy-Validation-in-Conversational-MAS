@@ -24,7 +24,7 @@ from pathlib import Path
 
 from . import chat, config, topologies
 from . import datasets as ds
-from .records import RecordWriter, new_run_id, utc_now
+from .records import RecordWriter, hw_status, new_run_id, utc_now
 
 TASK_FIELDS = (
     "run_id", "config_hash", "timestamp_utc",
@@ -36,6 +36,7 @@ TASK_FIELDS = (
 IDLE_FIELDS = (
     "run_id", "timestamp_utc", "dataset", "topology", "temperature",
     "calls_elapsed", "idle_w_external", "idle_w_ina_vdd_in", "duration_s",
+    "meter_samples_n", "meter_rate_hz", "hw_status",
 )
 
 _STOP = {"requested": False}
@@ -118,6 +119,15 @@ class Runner:
                              chat.call_seed(0, i), {"role": "warmup"})
 
     def _maybe_idle(self, dataset, condition, temperature, path):
+        """Sample the idle reference, with the same evidence the call rows carry.
+
+        This figure is subtracted from every energy number in the study, so an
+        error in it does not add noise, it shifts every result in one
+        direction. That makes it the one measurement where a quiet failure is
+        least survivable, and the reason the sample count travels with it: an
+        idle window that collected four samples has to be as visible here as
+        it is on a call row.
+        """
         if config.IDLE_EVERY_N_CALLS <= 0:
             return
         if self.calls_since_idle < config.IDLE_EVERY_N_CALLS:
@@ -130,6 +140,9 @@ class Runner:
             "idle_w_external": reading.get("idle_w_external", 0.0),
             "idle_w_ina_vdd_in": reading.get("idle_w_ina_vdd_in", 0.0),
             "duration_s": reading.get("duration_s", 0.0),
+            "meter_samples_n": reading.get("meter_samples_n", 0),
+            "meter_rate_hz": reading.get("meter_rate_hz", 0.0),
+            "hw_status": hw_status(reading.get("faults", ())),
         })
         self.calls_since_idle = 0
 
@@ -221,6 +234,35 @@ class Runner:
 
         return executed
 
+    def settle(self, seconds=None):
+        """Hold between blocks so every block starts from the same thermal state.
+
+        The per-call gate keeps calls comparable inside a block. It cannot make
+        two blocks comparable, because the device arrives at a new block
+        carrying whatever the previous condition left in it, and conditions
+        differ in how hard they drive the GPU. Settling drains that history
+        before the next block's first call rather than letting it decay across
+        the block's early items.
+
+        Polled rather than slept in one piece so an interrupt is honoured
+        within SETTLE_POLL_S. A five-minute uninterruptible sleep between
+        twenty-four blocks is two hours in which the operator's only option is
+        to kill the process and lose the task in flight.
+
+        Returns False if an interrupt arrived during the settle.
+        """
+        total = config.BLOCK_SETTLE_S if seconds is None else seconds
+        if total <= 0:
+            return not _STOP["requested"]
+        deadline = time.monotonic() + total
+        while True:
+            if _STOP["requested"]:
+                return False
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return True
+            time.sleep(min(config.SETTLE_POLL_S, remaining))
+
     def eta(self, tasks_left):
         if not self.durations:
             return "unknown"
@@ -229,6 +271,17 @@ class Runner:
         return "%.1f h" % hours
 
     def run(self):
+        """Execute the campaign, one block at a time, in randomised order.
+
+        validate() is the first statement, ahead of the signal handler, the
+        warm-up and any block, because everything after it writes rows that a
+        still-unset parameter would invalidate. The guard was written at the
+        same time as the parameters it checks and nothing on the execution
+        path ever called it, so a ten-day campaign could begin with
+        THERMAL_TARGET_C at None and produce ungated data indistinguishable
+        from the real thing.
+        """
+        config.validate()
         signal.signal(signal.SIGINT, _handle_sigint)
         blocks = ordered_blocks()
         per_block = config.N_ITEMS * len(config.SEEDS)
@@ -256,6 +309,10 @@ class Runner:
             sys.stderr.write("  block %d/%d done, %d tasks left, eta %s\n"
                              % (i, len(blocks), max(remaining_total, 0),
                                 self.eta(max(remaining_total, 0))))
+            if i < len(blocks):
+                sys.stderr.write("  settling %.0fs\n" % config.BLOCK_SETTLE_S)
+                if not self.settle():
+                    break
 
         sys.stderr.write("\n%d tasks executed this session.\n" % completed)
         return completed

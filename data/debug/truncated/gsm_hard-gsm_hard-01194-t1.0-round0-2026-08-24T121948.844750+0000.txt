@@ -1,0 +1,49 @@
+PROMPT
+======
+<|im_start|>system
+You are solving a problem.
+
+Work through the problem step by step, showing your reasoning in full.
+
+Then end your response with a final line that starts with "Answer:" followed by the answer alone: a number, a name, or a short phrase, with no restatement of the question and no explanation on that line. Brevity applies only to that final line. The reasoning above it should be as long as the problem needs.<|im_end|>
+<|im_start|>user
+Maria was charging her power bank before going to the park when she disconnected it and noticed the power bank wasn’t fully charged yet. Once at the park, her friends asked her if they could charge their phones. While charging her friends’ phones, she noticed that her power bank was losing 9% of the total capacity each hour. 5 hours later the battery started to lose instead 7% of the total capacity each hour for about 3 hours. In the end, the charge remaining was 28%. What was the charge of the power bank when Maria went out to the park?<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+
+COMPLETION (cut off at MAX_TOKENS)
+===================================
+Let’s analyze the situation step by step.
+
+1. **Initial Charge Loss**:  
+   Maria’s power bank was losing 9% of its total capacity each hour for 5 hours.  
+   So, the total loss is $ 9\% \times 5 = 45\% $.  
+   Therefore, the remaining charge after 5 hours is $ 100\% - 45\% = 55\% $.
+
+2. **Subsequent Charge Loss**:  
+   After 5 hours, the power bank started losing 7% of its total capacity each hour for 3 hours.  
+   So, the total loss is $ 7\% \times 3 = 21\% $.  
+   Therefore, the remaining charge after 3 more hours is $ 55\% - 21\% = 34\% $.
+
+3. **Final Charge**:  
+   The final charge remaining was 28%, which is less than the 34% calculated above. This suggests a discrepancy.  
+   This means the 7% loss rate must have been applied to the **remaining charge** instead of the total capacity.  
+   So, the charge was reduced by $ 7\% \times 3 = 21\% $ from the **remaining 34%**.  
+   $ 34\% - 21\% = 13\% $.
+
+   This means the charge remaining after 5 hours was **not 55%**, but **34%**, and the 7% loss was applied to that 34%.
+
+4. **Rechecking the Initial Charge**:  
+   Let’s denote the initial charge as $ x $.  
+   After 5 hours of 9% per hour loss:  
+   $ x - 0.09x \times 5 = x \times (1 - 0.09 \times 5) = x \times (1 - 0.45) = x \times 0.55 $.  
+   So, the charge after 5 hours is $ 0.55x $.
+
+   After 3 hours of 7% per hour loss (on the remaining charge):  
+   $ 0.55x - 0.07x \times 3 = 0.55x - 0.21x = 0.34x $.
+
+

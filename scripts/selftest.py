@@ -12,9 +12,14 @@ retry accounting and what each role is actually shown.
 Exit status is the number of failed checks.
 """
 
+import contextlib
 import csv
+import ctypes
+import io
 import json
+import os
 import re
+import signal
 import sys
 import tempfile
 import threading
@@ -25,12 +30,15 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from masenergy import band, chat, config, runner, topologies
+from masenergy import band, chat, config, gpio, ina3221, jetson, records, runner, topologies
 from masenergy import datasets as ds
+from masenergy import client as client_module
 from masenergy.client import LlamaClient, ServerError, _CALL_LOCK
 from masenergy.records import CallRecord, FIELDS, RecordWriter, new_run_id
 
+import check_device
 import prepare_datasets as prep
+import run_campaign
 import screen_datasets as screen
 
 GSM_HARD, HOTPOTQA = ds.GSM_HARD, ds.HOTPOTQA
@@ -462,6 +470,52 @@ def test_payload_and_cache():
           ds.extract_answer(GSM_HARD, "<think>hmm</think>\nAnswer: 42") == "42")
 
 
+def test_debug_truncated_capture():
+    """A call cut off at MAX_TOKENS can be inspected after the fact.
+
+    The CSV cannot answer "what was the model doing" for a truncated call:
+    raw completion text is not a measurement and is not a column. This is the
+    opt-in side door dry_run.py's --debug-truncated wires up. Off by default,
+    so the three cases that matter are: nothing written when unset, nothing
+    written for an ordinary call even when set, something written only when
+    both are true and it lands outside the CSV's own schema.
+    """
+    class Limited(StubClient):
+        def _post(self, payload):
+            out = super()._post(payload)
+            out["stop_type"] = "limit"
+            return out
+
+    tmp = Path(tempfile.mkdtemp())
+
+    client = Limited()
+    client.call("p", 0.7, 1, {"dataset": GSM_HARD, "item_id": "i"})
+    check("client", "unset debug_truncated_dir writes nothing",
+          not any(tmp.iterdir()), "debug_truncated_dir defaults to None")
+
+    client = Limited()
+    client.debug_truncated_dir = tmp
+    ordinary = StubClient()
+    ordinary.debug_truncated_dir = tmp
+    ordinary.call("p", 0.7, 1, {"dataset": GSM_HARD, "item_id": "ok"})
+    check("client", "an eos call writes nothing even with the dir set",
+          not any(tmp.iterdir()),
+          "only stop_type=='limit' should ever produce a file")
+
+    _, record = client.call("prompt text", 0.7, 1,
+                            {"dataset": GSM_HARD, "item_id": "trunc-1"})
+    written = list(tmp.iterdir())
+    check("client", "a limited call writes exactly one file",
+          len(written) == 1, str(written))
+    if written:
+        body = written[0].read_text(encoding="utf-8")
+        check("client", "the file carries both the prompt and the completion",
+              "prompt text" in body and "reasoning" in body, body[:120])
+    check("client", "the CSV record itself is untouched by the debug write",
+          record.finish_reason == "limit" and not hasattr(record, "debug_path"),
+          "the side file must never become a schema field")
+
+
 def test_band():
     check("band", "the band is %.0f points wide" % (band.BAND_HIGH - band.BAND_LOW),
           band.BAND_HIGH - band.BAND_LOW == 25.0)
@@ -581,6 +635,909 @@ def test_records():
               _raises_runtime(lambda: RecordWriter(stale)))
 
 
+def _write_items(root, n=2):
+    """Write a minimal hash-verified item file for every campaign dataset."""
+    (root / "data" / "items").mkdir(parents=True)
+    for name in config.DATASETS:
+        items = [{"id": "%s-%05d" % (name, i), "rank": i,
+                  "question": "q%d" % i, "answer": "42",
+                  "context": "c%d" % i if name == HOTPOTQA else None,
+                  "level": None}
+                 for i in range(n)]
+        (root / "data" / "items" / ("items_%s.json" % name)).write_text(
+            json.dumps({"sha256": ds.items_hash(items), "items": items}))
+
+
+def test_run_refuses_while_unvalidated():
+    """A campaign must not start while any REQUIRED_BEFORE_RUN value is None.
+
+    Driven through Runner.run() rather than through config.validate(), because
+    validate() passing its own unit check is exactly what was true while the
+    defect was live: the guard worked and nothing on the execution path called
+    it. Asserting the refusal anywhere other than the entry point would not
+    have caught that, and would not catch it coming back.
+
+    Every required parameter is blanked rather than one, so the check also
+    holds once the campaign's own values are filled in, and so the message can
+    be asserted to name all of them rather than only the first.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write_items(root)
+        client = StubClient([answered("42")] * 4000)
+        run = runner.Runner(client, root, out_dir=root / "out", run_id="selftest")
+
+        saved = {n: getattr(config, n) for n in config.REQUIRED_BEFORE_RUN}
+        handler = signal.getsignal(signal.SIGINT)
+        raised = None
+        try:
+            for name in config.REQUIRED_BEFORE_RUN:
+                setattr(config, name, None)
+            try:
+                run.run()
+            except RuntimeError as exc:
+                raised = exc
+        finally:
+            for name, value in saved.items():
+                setattr(config, name, value)
+            signal.signal(signal.SIGINT, handler)
+        written = sorted(p.name for p in run.out.iterdir())
+
+    check("guard", "Runner.run refuses to start while a parameter is unset",
+          raised is not None,
+          "run() returned instead of raising; nothing calls config.validate()")
+    check("guard", "the refusal happens before any model call is issued",
+          not client.prompts, "%d calls were issued first" % len(client.prompts))
+    missing = [n for n in config.REQUIRED_BEFORE_RUN if n not in str(raised or "")]
+    check("guard", "the refusal names every unset parameter, not just the first",
+          not missing, "absent from the message: %s" % missing)
+    check("guard", "no block table was written before the refusal",
+          not written, "wrote %s" % written[:3])
+
+
+class FakeGatedDevice(client_module.Device):
+    """A Device that genuinely gates, standing in for JetsonDevice off-target."""
+
+    def wait_for_gate(self):
+        return {"gate_wait_s": 7.5, "gate_timed_out": True}
+
+    def read_state(self):
+        return dict(client_module.Device.read_state(self), temp_c_soc=44.0)
+
+
+class FakeClock:
+    """Monotonic time and sleep that advance only when sleep is called."""
+
+    def __init__(self):
+        self.now = 0.0
+        self.slept = []
+
+    def monotonic(self):
+        return self.now
+
+    def sleep(self, seconds):
+        self.slept.append(seconds)
+        self.now += seconds
+
+
+def _ramp(values):
+    """Read a scripted temperature sequence, holding on the last value."""
+    box = list(values)
+
+    def read():
+        return box.pop(0) if len(box) > 1 else box[0]
+    return read
+
+
+def test_thermal_gate():
+    """The gate policy: both directions, the timeout, and the recorded fields.
+
+    Driven through injected clocks so a five-minute timeout is exercised
+    without waiting five minutes, and so the cold branch can be tested at all.
+    A device cannot be made cold on demand.
+    """
+    clock = FakeClock()
+    result = jetson.wait_until_in_band(_ramp([45.0]), 45.0, 1.0, 300.0, 2.0,
+                                       clock.monotonic, clock.sleep)
+    check("thermal", "a device already in band is not held",
+          result == {"gate_wait_s": 0.0, "gate_timed_out": False}, str(result))
+
+    clock = FakeClock()
+    result = jetson.wait_until_in_band(
+        _ramp([60.0, 55.0, 50.0, 45.5]), 45.0, 1.0, 300.0, 2.0,
+        clock.monotonic, clock.sleep)
+    check("thermal", "a hot device is held until it cools into band",
+          result["gate_wait_s"] == 6.0 and not result["gate_timed_out"],
+          str(result))
+
+    clock = FakeClock()
+    result = jetson.wait_until_in_band(
+        _ramp([20.0, 30.0, 40.0, 44.5]), 45.0, 1.0, 300.0, 2.0,
+        clock.monotonic, clock.sleep)
+    check("thermal", "a cold device is held until it warms into band",
+          result["gate_wait_s"] == 6.0 and not result["gate_timed_out"],
+          "a gate that only watches for overheating returns 0.0 here: %s"
+          % result)
+
+    clock = FakeClock()
+    result = jetson.wait_until_in_band(_ramp([90.0]), 45.0, 1.0, 10.0, 2.0,
+                                       clock.monotonic, clock.sleep)
+    check("thermal", "a device that never reaches band gives up at the timeout",
+          result["gate_timed_out"] and result["gate_wait_s"] >= 10.0, str(result))
+    check("thermal", "giving up does not overshoot the timeout",
+          result["gate_wait_s"] == 10.0, str(result))
+
+    clock = FakeClock()
+    jetson.wait_until_in_band(_ramp([90.0]), 45.0, 1.0, 5.0, 2.0,
+                              clock.monotonic, clock.sleep)
+    check("thermal", "the final poll is clipped so the timeout is not exceeded",
+          clock.slept == [2.0, 2.0, 1.0], str(clock.slept))
+
+    check("thermal", "the band is symmetric about the target",
+          jetson.wait_until_in_band(_ramp([44.0]), 45.0, 1.0, 1.0, 0.1,
+                                    FakeClock().monotonic, FakeClock().sleep
+                                    )["gate_timed_out"] is False
+          and jetson.wait_until_in_band(_ramp([46.0]), 45.0, 1.0, 1.0, 0.1,
+                                        FakeClock().monotonic, FakeClock().sleep
+                                        )["gate_timed_out"] is False)
+
+    check("thermal", "millidegrees are converted, not read raw",
+          _read_zone_roundtrip() == 45.5)
+
+    check("thermal", "a machine with no thermal zones refuses to construct",
+          _raises_type(jetson.ThermalUnavailable,
+                       lambda: jetson.JetsonDevice(Path("/nonexistent"))))
+
+    client = StubClient([answered("42")])
+    client.device = FakeGatedDevice()
+    _, record = client.call("p", 0.7, 1, {"dataset": GSM_HARD})
+    check("thermal", "gate_wait_s reaches the call record",
+          record.gate_wait_s == 7.5, str(record.gate_wait_s))
+    check("thermal", "gate_timed_out reaches the call record",
+          record.gate_timed_out is True)
+    check("thermal", "the gate waits outside the measured window",
+          record.trigger_high_ts >= 0.0 and record.temp_c_soc_before == 44.0)
+
+
+def _fake_sysfs(root, zones):
+    """Build a thermal sysfs tree shaped like the kernel's."""
+    for i, (name, milli) in enumerate(zones):
+        zone = root / ("thermal_zone%d" % i)
+        zone.mkdir(parents=True)
+        (zone / "type").write_text("%s\n" % name, encoding="utf-8")
+        (zone / "temp").write_text("%d\n" % milli, encoding="utf-8")
+    return root
+
+
+def test_jetson_sysfs():
+    """JetsonDevice against a synthetic thermal tree.
+
+    The gate policy is tested elsewhere against injected clocks. This is the
+    other half: the sysfs reading, which has never run on a Jetson and would
+    otherwise reach the campaign with no coverage at all. A synthetic tree
+    cannot prove the zone names are the ones an Orin reports, but it does prove
+    the discovery, the ordering and the unit conversion.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _fake_sysfs(Path(tmp) / "full", [
+            ("CPU-therm", 47250), ("GPU-therm", 45500), ("tj-therm", 46000),
+            ("SOC0-therm", 45750), ("PMIC-Die", 40000)])
+        zones = jetson.discover_zones(root)
+        check("jetson", "every zone is discovered by the name it reports",
+              set(zones) == {"cpu-therm", "gpu-therm", "tj-therm", "soc0-therm",
+                             "pmic-die"}, str(sorted(zones)))
+
+        device = jetson.JetsonDevice(root)
+        check("jetson", "the junction sensor is preferred for the gate",
+              device.soc.parent.name == "thermal_zone2")
+        check("jetson", "cpu and gpu zones resolve independently",
+              device.cpu.parent.name == "thermal_zone0"
+              and device.gpu.parent.name == "thermal_zone1")
+
+        state = device.read_state()
+        check("jetson", "temperatures are converted from millidegrees",
+              state["temp_c_soc"] == 46.0 and state["temp_c_cpu"] == 47.25,
+              str(state))
+        check("jetson", "an absent sensor records NaN, never a plausible zero",
+              state["ambient_c"] != state["ambient_c"])
+        check("jetson", "the gate reads the sensor it selected",
+              device.read_soc_temp() == 46.0)
+
+        partial = _fake_sysfs(Path(tmp) / "partial", [("SOC0-therm", 41000)])
+        fallback = jetson.JetsonDevice(partial)
+        check("jetson", "a device without a junction sensor falls back to SOC0",
+              fallback.read_soc_temp() == 41.0)
+        missing = fallback.read_state()
+        check("jetson", "absent cpu and gpu zones are NaN, not zero",
+              missing["temp_c_cpu"] != missing["temp_c_cpu"]
+              and missing["temp_c_gpu"] != missing["temp_c_gpu"])
+
+        useless = _fake_sysfs(Path(tmp) / "useless", [("PMIC-Die", 40000)])
+        check("jetson", "a tree with zones but no SoC zone still refuses",
+              _raises_type(jetson.ThermalUnavailable,
+                           lambda: jetson.JetsonDevice(useless)))
+
+        check("jetson", "a real device passes the entry point stub check",
+              run_campaign.check_hardware(
+                  client_module.Trigger(), device, client_module.EnergyMeter())
+              == ["Trigger", "EnergyMeter"])
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            status = check_device.main(["--root", str(root), "--sample", "0"])
+        check("jetson", "the device check reports a usable device",
+              status == 0 and "READY" in out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            status = check_device.main(
+                ["--root", str(Path(tmp) / "nothing"), "--sample", "0"])
+        check("jetson", "the device check refuses a machine with no zones",
+              status == 1 and "REFUSED" in out.getvalue())
+
+
+def _read_zone_roundtrip():
+    """Write a sysfs-shaped millidegree file and read it back as Celsius."""
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "temp"
+        path.write_text("45500\n", encoding="utf-8")
+        return jetson.read_zone_c(path)
+
+
+def test_block_settle():
+    """The between-block settle, and that an interrupt cuts it short."""
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        _write_items(root)
+        run = runner.Runner(StubClient(), root, out_dir=root / "out",
+                            run_id="selftest")
+
+        started = time.monotonic()
+        completed = run.settle(0.05)
+        elapsed = time.monotonic() - started
+        check("settle", "a settle runs to completion and reports it",
+              completed is True and elapsed >= 0.05, "%.3fs" % elapsed)
+
+        check("settle", "a zero settle is not an error", run.settle(0) is True)
+
+        runner._STOP["requested"] = True
+        try:
+            started = time.monotonic()
+            interrupted = run.settle(30.0)
+            elapsed = time.monotonic() - started
+        finally:
+            runner._STOP["requested"] = False
+        check("settle", "an interrupt cuts a settle short rather than waiting it out",
+              interrupted is False and elapsed < 1.0, "%.3fs" % elapsed)
+        check("settle", "polling is fine enough to honour an interrupt promptly",
+              config.SETTLE_POLL_S <= 5.0)
+        check("settle", "the campaign settles between blocks",
+              "self.settle()" in Path(runner.__file__).read_text(encoding="utf-8"))
+
+
+class StopAfter(StubClient):
+    """A stub that raises the interrupt flag partway through, as SIGINT would."""
+
+    def __init__(self, calls):
+        super().__init__()
+        self.budget = calls
+
+    def _post(self, payload):
+        self.budget -= 1
+        if self.budget <= 0:
+            runner._STOP["requested"] = True
+        return super()._post(payload)
+
+
+@contextlib.contextmanager
+def campaign_config(n_items=1):
+    """Temporarily complete the frozen parameters so a campaign can start.
+
+    Runner.run() refuses while any REQUIRED_BEFORE_RUN value is None, which is
+    the guard from Phase 1.1 and is not being bypassed here: the values are set,
+    the run is a real one, and everything is restored afterwards. This is what
+    run_campaign.py --dry would exercise once the campaign's own values are
+    chosen, available now rather than after the hardware exists.
+    """
+    names = list(config.REQUIRED_BEFORE_RUN) + ["N_ITEMS", "BLOCK_SETTLE_S"]
+    saved = {n: getattr(config, n) for n in names}
+    placeholders = {
+        "MODEL_FILE": "rehearsal.gguf", "MODEL_REVISION": "0" * 40,
+        "MODEL_PATH": "models/rehearsal.gguf", "CTX_SIZE": 3072,
+        "THERMAL_TARGET_C": 45.0, "NVPMODEL_MODE": 0,
+        "TRIGGER_CHIP": "/dev/gpiochip0", "TRIGGER_LINE": 0,
+        "PRICE_IN_PER_M": 0.0, "PRICE_OUT_PER_M": 0.0, "PRICE_SOURCE": "rehearsal",
+        "N_ITEMS": n_items, "BLOCK_SETTLE_S": 0.0,
+    }
+    for name in names:
+        setattr(config, name, placeholders.get(name, saved[name]))
+    try:
+        yield
+    finally:
+        for name, value in saved.items():
+            setattr(config, name, value)
+
+
+def _tasks_written(out):
+    """Every (block, item, seed) recorded across a run directory.
+
+    The block name is the leading field of the filename, not its stem. These
+    files carry two suffixes, so Path.stem on block.tasks.csv leaves the
+    ".tasks" attached and no two derived names ever compare equal.
+    """
+    rows = []
+    for path in sorted(Path(out).glob("*.tasks.csv")):
+        with open(path, encoding="utf-8") as fh:
+            for row in csv.DictReader(fh):
+                rows.append((path.name.split(".")[0], row["item_id"], row["seed"]))
+    return rows
+
+
+def test_full_campaign_and_resume():
+    """Every block start to finish, then an interrupt, then a resume.
+
+    The single-block check cannot see the things that make a ten-day run
+    survivable: that all twenty-four blocks execute, that an interrupt on day
+    six costs the task in flight and nothing else, and that resuming redoes no
+    work. Until now that path had never run beyond one block, and --dry cannot
+    rehearse it while the frozen parameters are unset.
+    """
+    with tempfile.TemporaryDirectory() as tmp, campaign_config() as _:
+        root = Path(tmp)
+        _write_items(root, n=1)
+        expected = len(config.blocks()) * len(config.SEEDS)
+
+        out = root / "out"
+        stopper = StopAfter(120)
+        first = runner.Runner(stopper, root, out_dir=out, run_id="rehearsal")
+        with contextlib.redirect_stderr(io.StringIO()):
+            partial = first.run()
+        runner._STOP["requested"] = False
+
+        check("campaign", "an interrupt stops the run before it finishes",
+              0 < partial < expected, "executed %d of %d" % (partial, expected))
+        check("campaign", "the interrupt releases the writer",
+              stopper.writer is None)
+
+        resumed = runner.Runner(StubClient(), root, out_dir=out,
+                                run_id="rehearsal")
+        with contextlib.redirect_stderr(io.StringIO()):
+            rest = resumed.run()
+
+        check("campaign", "resuming finishes exactly the outstanding work",
+              partial + rest == expected,
+              "%d + %d != %d" % (partial, rest, expected))
+
+        written = _tasks_written(out)
+        check("campaign", "every block ran to completion across the two sessions",
+              len(written) == expected, "%d task rows" % len(written))
+        check("campaign", "resuming duplicated no task",
+              len(set(written)) == len(written),
+              "%d duplicates" % (len(written) - len(set(written))))
+        check("campaign", "all %d blocks produced a table" % len(config.blocks()),
+              len({b for b, _, _ in written}) == len(config.blocks()))
+
+        blocks_on_disk = {p.name.split(".")[0] for p in out.glob("*.calls.csv")}
+        check("campaign", "a call table accompanies every task table",
+              blocks_on_disk == {b for b, _, _ in written})
+
+        again = runner.Runner(StubClient(), root, out_dir=out, run_id="rehearsal")
+        with contextlib.redirect_stderr(io.StringIO()):
+            check("campaign", "a finished campaign resumes to zero work",
+                  again.run() == 0)
+
+
+class OverriddenTrigger(client_module.Trigger):
+    """A Trigger that actually drives a line, as a real implementation would."""
+
+    def high(self):
+        return 1.0
+
+    def low(self):
+        return 2.0
+
+    def status(self):
+        return {"trigger_pulse_n": 1, "trigger_edge_us": 3.0, "faults": ()}
+
+    def close(self):
+        return None
+
+
+class HalfTrigger(client_module.Trigger):
+    """Drives the line but inherits status(), so every row reports pulse zero.
+
+    The worst of the three shapes, because it is the one that looks healthy.
+    Real pulses reach the ESP32 and real energy columns fill in, while the
+    ordinal that joins the two stays at zero on every row and the external
+    measurement can never be matched to the calls that produced it.
+    """
+
+    def high(self):
+        return 1.0
+
+    def low(self):
+        return 2.0
+
+
+class InheritedTrigger(client_module.Trigger):
+    """A subclass that overrides nothing, which is the accident being guarded.
+
+    Named because this is the shape that defeats a check on class identity: it
+    is not Trigger and not NullTrigger, so a type test would admit it, and it
+    would record zero joules against every call in the campaign.
+    """
+
+
+def test_entry_point_guards():
+    """The gates in run_campaign.py, and the stub detector they rest on.
+
+    Every hardware interface in this repository is still a no-op, and the two
+    families are indistinguishable by class: NullTrigger, NullDevice and
+    NullEnergyMeter are empty subclasses of stubs. The entry point therefore
+    decides by method identity, and that decision is what these checks
+    exercise, because it is the only thing standing between the study and
+    twenty thousand rows of zero joules that look exactly like a measurement.
+    """
+    for label, instance, base in (
+        ("Trigger", client_module.Trigger(), client_module.Trigger),
+        ("Device", client_module.Device(), client_module.Device),
+        ("EnergyMeter", client_module.EnergyMeter(), client_module.EnergyMeter),
+        ("NullTrigger", client_module.NullTrigger(), client_module.Trigger),
+        ("NullDevice", client_module.NullDevice(), client_module.Device),
+        ("NullEnergyMeter", client_module.NullEnergyMeter(), client_module.EnergyMeter),
+    ):
+        check("entry point", "%s is recognised as a stub" % label,
+              run_campaign.is_stub(instance, base))
+
+    check("entry point", "a subclass that overrides nothing is still a stub",
+          run_campaign.is_stub(InheritedTrigger(), client_module.Trigger),
+          "a check on class identity would admit this and record zero joules")
+    check("entry point", "a subclass that drives the line is not a stub",
+          not run_campaign.is_stub(OverriddenTrigger(), client_module.Trigger),
+          "the guard would refuse a real implementation and block the campaign")
+    check("entry point", "a trigger that drives the line but inherits status is a stub",
+          run_campaign.is_stub(HalfTrigger(), client_module.Trigger),
+          "a half-implemented trigger emits real pulses and records pulse 0 on "
+          "every row, so the external rig can never be joined to the calls")
+    check("entry point", "close is lifecycle, not measurement",
+          "close" not in sum(run_campaign.STUB_METHODS.values(), ()),
+          "requiring close would flag a real implementation with nothing to "
+          "release")
+
+    stubs = run_campaign.check_hardware(
+        client_module.Trigger(), client_module.Device(), client_module.EnergyMeter())
+    check("entry point", "a live run names every interface still stubbed",
+          stubs == ["Trigger", "Device", "EnergyMeter"], str(stubs))
+    check("entry point", "a real device is not counted as a stub",
+          run_campaign.check_hardware(client_module.Trigger(), FakeGatedDevice(),
+                                      client_module.EnergyMeter())
+          == ["Trigger", "EnergyMeter"])
+    check("entry point", "a measurement run refuses off the Jetson",
+          _raises_type(SystemExit, lambda: run_campaign.hardware(False)))
+    dry = run_campaign.hardware(True)
+    check("entry point", "--dry selects the Null implementations",
+          [type(o).__name__ for o in dry]
+          == ["NullTrigger", "NullDevice", "NullEnergyMeter"])
+
+    run_id, out = run_campaign.resolve_run("", False)
+    check("entry point", "a fresh run_id carries the current config hash",
+          run_id.endswith(config.config_hash()))
+    check("entry point", "a measurement writes to a run directory",
+          out.name == run_id and out.parent.name == "raw")
+    _, rehearsal = run_campaign.resolve_run(run_id, True)
+    check("entry point", "a rehearsal cannot be pooled with a measurement",
+          rehearsal.name == "rehearsal-%s" % run_id)
+    check("entry point", "resuming a run from another config is refused",
+          _raises_type(SystemExit,
+                       lambda: run_campaign.resolve_run(
+                           "20260101T000000Z-deadbeefdeadbeef", False)))
+    check("entry point", "resuming a run from this config is allowed",
+          run_campaign.resolve_run(run_id, False)[0] == run_id)
+
+
+def _write_hwmon(root, channels):
+    """A synthetic hwmon tree. channels is (index, label, mV, mA, uW or None)."""
+    hwmon = root / "hwmon0"
+    hwmon.mkdir(parents=True)
+    for index, label, mv, ma, uw in channels:
+        (hwmon / ("in%d_label" % index)).write_text(label)
+        if mv is not None:
+            (hwmon / ("in%d_input" % index)).write_text(str(mv))
+            (hwmon / ("curr%d_input" % index)).write_text(str(ma))
+        if uw is not None:
+            (hwmon / ("power%d_input" % index)).write_text(str(uw))
+    return root
+
+
+def _series(values, step=1.0):
+    """Timestamped single-rail samples, one per step second."""
+    return [(i * step, v) for i, v in enumerate(values)]
+
+
+class ExplodingRail(ina3221.Rail):
+    """A rail whose sysfs node has stopped answering mid-campaign."""
+
+    def __init__(self, key):
+        super().__init__(key, key.upper(), power_path=Path("/nonexistent"))
+
+    def watts(self):
+        raise OSError("EIO")
+
+
+class SteadyRail(ina3221.Rail):
+    """A rail that reads a fixed wattage, so an integral has a known answer."""
+
+    def __init__(self, key, value):
+        super().__init__(key, key.upper(), power_path=Path("/nonexistent"))
+        self.value = value
+
+    def watts(self):
+        return self.value
+
+
+def _meter(rails, poll_s=0.001, settle=0.05):
+    """A JetsonEnergyMeter over injected rails, with its sampler warmed up."""
+    meter = jetson.JetsonEnergyMeter(rails=rails, poll_s=poll_s, span_s=10.0)
+    time.sleep(settle)
+    return meter
+
+
+def test_gpio_abi():
+    """The ioctl ABI, checked against the numbers the kernel headers produce.
+
+    This is the one part of the hardware path that cannot be exercised against
+    a synthetic tree: there is no fake /dev/gpiochip. What can be checked is
+    that the structures are the size the kernel expects and that the request
+    numbers derived from them match, because every field in the v2 ABI is
+    fixed width with explicit padding and therefore identical on the machine
+    this runs on and on the Jetson.
+
+    Getting this wrong is not a crash. A structure one field short still
+    marshals, and the kernel reads the trigger line's number out of whichever
+    bytes land at that offset.
+    """
+    check("gpio", "every v2 structure matches the kernel ABI",
+          not gpio.abi_mismatches(), "; ".join(gpio.abi_mismatches()))
+    for name, (actual, expected) in sorted(gpio.ABI_REQUESTS.items()):
+        check("gpio", "%s encodes to %#x" % (name, expected), actual == expected,
+              "got %#x" % actual)
+    check("gpio", "the request number is derived from the structure, not typed in",
+          gpio._ioc(3, 0x0F, ctypes.sizeof(gpio._LineValues))
+          == gpio.GPIO_V2_LINE_SET_VALUES_IOCTL)
+    check("gpio", "a missing chip raises GpioError, not a bare OSError",
+          _raises_type(gpio.GpioError,
+                       lambda: gpio.OutputLine("/nonexistent/gpiochip9", 0)))
+    check("gpio", "a trigger with no configured line refuses to construct",
+          _raises_type(gpio.GpioError, jetson.JetsonTrigger))
+
+
+def test_rail_discovery():
+    """Rails found by label, and the unit path chosen for each.
+
+    Channel order is a device-tree property, so the tree here deliberately
+    puts VDD_IN last. A reader wired to channel 1 would pass every check while
+    reporting the SoC rail in the VDD_IN column, which is a mislabelling no
+    downstream analysis could detect.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write_hwmon(Path(tmp), [
+            (1, "VDD_SOC", 5000, 400, None),
+            (2, "VDD_CPU_GPU_CV", 5000, 1000, None),
+            (3, "VDD_IN", 19000, 1500, None),
+            (4, "PMIC_TEMP", None, None, None),
+        ])
+        rails = ina3221.discover_rails(root)
+        check("rails", "every recorded rail is discovered",
+              sorted(rails) == sorted(ina3221.RAIL_KEYS), str(sorted(rails)))
+        check("rails", "rails resolve by label, not by channel index",
+              rails["vdd_in"].label == "VDD_IN"
+              and rails["soc"].label == "VDD_SOC",
+              "vdd_in resolved to %s" % rails["vdd_in"].label)
+        check("rails", "volts times current is preferred over the power node",
+              all(r.source == "volt_x_current" for r in rails.values()))
+        check("rails", "19000 mV at 1500 mA reads as 28.5 W",
+              abs(rails["vdd_in"].watts() - 28.5) < 1e-9,
+              "got %r" % rails["vdd_in"].watts())
+        strays = [label for _, label in ina3221.unmatched_labels(root)]
+        check("rails", "an unrecognised label is reported rather than dropped",
+              strays == ["PMIC_TEMP"], str(strays))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write_hwmon(Path(tmp), [(1, "VDD_IN", None, None, 28500000)])
+        rails = ina3221.discover_rails(root)
+        check("rails", "the power node is used when volts and current are absent",
+              rails["vdd_in"].source == "power"
+              and abs(rails["vdd_in"].watts() - 28.5) < 1e-9)
+
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _write_hwmon(Path(tmp), [(1, "vdd_in_sys", 19000, 1000, None)])
+        check("rails", "an alternate label spelling still resolves",
+              "vdd_in" in ina3221.discover_rails(root))
+        check("rails", "a meter refuses to construct with no rails at all",
+              _raises_type(ina3221.RailsUnavailable,
+                           lambda: jetson.JetsonEnergyMeter(rails={})))
+
+
+def test_energy_integration():
+    """The integrator, against series whose answers are known analytically.
+
+    A trapezoid is exact for a linear ramp, so both cases below have a single
+    right answer rather than a tolerance, and a rectangle-rule regression
+    would fail the ramp by half a joule.
+    """
+    check("energy", "10 W held for 2 s is 20 J",
+          ina3221.integrate(_series([10.0, 10.0, 10.0]), 1) == 20.0,
+          "got %r" % ina3221.integrate(_series([10.0, 10.0, 10.0]), 1))
+    check("energy", "a 0 to 10 W ramp over 2 s is 10 J",
+          ina3221.integrate(_series([0.0, 5.0, 10.0]), 1) == 10.0,
+          "got %r" % ina3221.integrate(_series([0.0, 5.0, 10.0]), 1))
+    check("energy", "a single sample cannot be integrated",
+          _isnan(ina3221.integrate(_series([10.0]), 1)))
+    check("energy", "an empty window cannot be integrated",
+          _isnan(ina3221.integrate([], 1)))
+    check("energy", "one unreadable sample voids the window, not just itself",
+          _isnan(ina3221.integrate(
+              [(0.0, 10.0), (1.0, float("nan")), (2.0, 10.0)], 1)),
+          "a partial integral is smaller than the truth by an unknown amount "
+          "and looks exactly like a quiet call")
+    check("energy", "mean power over a steady window is that power",
+          ina3221.mean_watts(_series([7.0, 7.0, 7.0]), 1) == 7.0)
+    check("energy", "samples 0.1 s apart report as 10 Hz, not as a sample count",
+          ina3221.observed_rate_hz(_series([1.0] * 5, step=0.1)) == 10.0,
+          "got %r" % ina3221.observed_rate_hz(_series([1.0] * 5, step=0.1)))
+
+
+def test_meter_faults():
+    """A failing instrument must not stop a run, and must not look like data.
+
+    Each case below is a way the meter can fail that raises nothing. The
+    check is always the same pair: the campaign survives, and the row it wrote
+    cannot be mistaken for a real measurement.
+    """
+    meter = _meter({"vdd_in": SteadyRail("vdd_in", 10.0),
+                    "cpu_gpu_cv": SteadyRail("cpu_gpu_cv", 4.0),
+                    "soc": SteadyRail("soc", 2.0)})
+    try:
+        meter.start()
+        time.sleep(0.05)
+        reading = meter.stop()
+    finally:
+        meter.close()
+    check("meter", "a healthy window reports no fault",
+          reading["hw_status" if "hw_status" in reading else "faults"] == (),
+          str(reading["faults"]))
+    check("meter", "a steady 10 W rail integrates to roughly window times 10",
+          abs(reading["energy_j_ina_vdd_in"]
+              - 10.0 * reading["meter_window_s"]) < 1e-6)
+    check("meter", "the sample count travels with the energy",
+          reading["meter_samples_n"] > 2 and reading["meter_rate_hz"] > 0,
+          str(reading["meter_samples_n"]))
+    check("meter", "energy_j_external is never fabricated on the Jetson",
+          _isnan(reading["energy_j_external"]),
+          "the external rig is on the ESP32's bus and is joined afterwards")
+
+    meter = _meter({"vdd_in": ExplodingRail("vdd_in"),
+                    "cpu_gpu_cv": SteadyRail("cpu_gpu_cv", 4.0),
+                    "soc": SteadyRail("soc", 2.0)})
+    try:
+        meter.start()
+        time.sleep(0.05)
+        reading = meter.stop()
+        survived = True
+    except Exception:
+        reading, survived = {}, False
+    finally:
+        meter.close()
+    check("meter", "a rail that stops answering does not kill the run", survived,
+          "a ten-day campaign cannot end on one failed sysfs read")
+    if survived:
+        check("meter", "a failed rail records NaN, never zero",
+              _isnan(reading["energy_j_ina_vdd_in"]),
+              "got %r, which is indistinguishable from a rail drawing nothing"
+              % reading["energy_j_ina_vdd_in"])
+        check("meter", "a failed rail is named in hw_status",
+              "meter_rail_unreadable" in reading["faults"],
+              str(reading["faults"]))
+        check("meter", "the rails that still work are still measured",
+              not _isnan(reading["energy_j_ina_soc"]))
+
+    meter = _meter({"vdd_in": SteadyRail("vdd_in", 10.0)})
+    try:
+        meter.start()
+        time.sleep(0.05)
+        reading = meter.stop()
+    finally:
+        meter.close()
+    check("meter", "a rail this board lacks is NaN and flagged, not zero",
+          _isnan(reading["energy_j_ina_soc"])
+          and "meter_rail_missing" in reading["faults"],
+          str(reading["faults"]))
+
+    meter = _meter({"vdd_in": SteadyRail("vdd_in", 10.0)}, poll_s=5.0, settle=0.0)
+    try:
+        meter.start()
+        reading = meter.stop()
+    finally:
+        meter.close()
+    check("meter", "a window with too few samples is flagged, not averaged",
+          "meter_no_samples" in reading["faults"]
+          and _isnan(reading["energy_j_ina_vdd_in"]),
+          str(reading["faults"]))
+
+    meter = _meter({"vdd_in": SteadyRail("vdd_in", 10.0),
+                    "cpu_gpu_cv": SteadyRail("cpu_gpu_cv", 4.0),
+                    "soc": SteadyRail("soc", 2.0)})
+    meter.sampler.close()
+    meter.start()
+    reading = meter.stop()
+    check("meter", "a sampler thread that has died is visible on the row",
+          "meter_thread_dead" in reading["faults"],
+          "an exception inside the sampler kills the thread without reaching "
+          "the caller, so the run continues collecting nothing and only this "
+          "flag says so")
+
+
+def test_sysfs_permissions():
+    """A path this user may not traverse must not abort a call.
+
+    The EMC clock lives under debugfs, which is root-only, and a campaign has
+    no reason to run privileged. Path.exists() stats, and stat raises
+    PermissionError rather than returning False, so probing for that file
+    politely is what would end a ten-day run on its first call. Found by
+    running the suite on a machine with a restricted /sys rather than by
+    reasoning about it, which is why it is pinned here.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        walled = Path(tmp) / "walled"
+        (walled / "thermal_zone0").mkdir(parents=True)
+        (walled / "thermal_zone0" / "type").write_text("tj-therm")
+        (walled / "thermal_zone0" / "temp").write_text("45000")
+        forbidden = Path(tmp) / "forbidden"
+        (forbidden / "inner").mkdir(parents=True)
+        blocked = forbidden / "inner" / "rate"
+        blocked.write_text("204000000")
+        forbidden.chmod(0o000)
+        try:
+            reachable = not os.access(str(blocked), os.R_OK)
+            saved = jetson.EMC_FALLBACKS
+            jetson.EMC_FALLBACKS = (blocked,)
+            try:
+                faults = []
+                values = jetson.read_frequencies(
+                    faults, devfreq_root=Path(tmp) / "nothing",
+                    cpu_root=Path(tmp) / "nothing")
+                survived = True
+            except OSError:
+                values, faults, survived = (), [], False
+            finally:
+                jetson.EMC_FALLBACKS = saved
+        finally:
+            forbidden.chmod(0o755)
+
+    if not reachable:
+        warn("sysfs", "the forbidden-path check could not run", False,
+             "this user can read a 000 directory, so it is root; the check "
+             "runs unprivileged, which is how the campaign runs")
+        return
+    check("sysfs", "an unreadable clock path does not raise out of read_state",
+          survived,
+          "Path.exists() raises PermissionError on a directory this user "
+          "cannot traverse, which would end the run on its first call")
+    check("sysfs", "the unreadable clock is reported as a fault, not a value",
+          values == (0, 0, 0) and "freq_unreadable" in faults, str(faults))
+    check("sysfs", "rail discovery survives an untraversable hwmon root",
+          ina3221.discover_rails(Path("/proc/1/root/nonexistent")) == {})
+
+
+def test_hw_status_column():
+    """The status vocabulary, and that it reaches the row a campaign writes."""
+    check("hw_status", "tokens are sorted and pipe joined",
+          records.hw_status(["meter_no_samples", "freq_unreadable"])
+          == "freq_unreadable|meter_no_samples")
+    check("hw_status", "duplicates collapse",
+          records.hw_status(["freq_unreadable"] * 3) == "freq_unreadable")
+    check("hw_status", "a clean call writes an empty cell",
+          records.hw_status(()) == "")
+    check("hw_status", "an unknown token raises rather than being written",
+          _raises_type(ValueError, lambda: records.hw_status(["meter_borked"])),
+          "a misspelled fault never appears in any count of itself")
+
+    emitted = set()
+    faults = []
+    jetson.read_frequencies(faults, devfreq_root=Path("/nonexistent"),
+                            cpu_root=Path("/nonexistent"))
+    emitted.update(faults)
+    device = _device_on_synthetic_tree()
+    if device is not None:
+        emitted.update(device.read_state()["faults"])
+    check("hw_status", "every token the implementations emit is in the vocabulary",
+          emitted <= records.HW_FAULTS, str(sorted(emitted - records.HW_FAULTS)))
+
+    for name in ("trigger_pulse_n", "trigger_edge_us", "meter_samples_n",
+                 "meter_rate_hz", "meter_window_s", "hw_status"):
+        check("hw_status", "%s is a recorded column" % name, name in FIELDS)
+
+
+def _device_on_synthetic_tree():
+    """A JetsonDevice over a temporary thermal tree, or None if it cannot build."""
+    tmp = tempfile.mkdtemp()
+    zone = Path(tmp) / "thermal_zone0"
+    zone.mkdir(parents=True)
+    (zone / "type").write_text("tj-therm")
+    (zone / "temp").write_text("45000")
+    try:
+        return jetson.JetsonDevice(Path(tmp))
+    except jetson.ThermalUnavailable:
+        return None
+
+
+def test_trigger_pulse_join():
+    """The pulse ordinal, which is the only key joining a row to the rig.
+
+    The ESP32 keeps its own clock, so timestamps cannot align the two streams.
+    If this column does not increment once per call and reach the CSV, the
+    external measurement is a stream of pulses that cannot be matched to
+    anything, and no amount of later analysis recovers it.
+    """
+    class CountingTrigger(client_module.Trigger):
+        def __init__(self):
+            self.pulse_n = 0
+
+        def high(self):
+            self.pulse_n += 1
+            return 1.0
+
+        def status(self):
+            return {"trigger_pulse_n": self.pulse_n,
+                    "trigger_edge_us": 12.5, "faults": ()}
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "calls.csv"
+        with RecordWriter(path, {"kind": "selftest"}) as writer:
+            client = StubClient([answered("42")] * 6, writer=writer)
+            client.trigger = CountingTrigger()
+            for i in range(3):
+                client.call_with_retries(
+                    "p", 0.7, 101 + i,
+                    {"dataset": GSM_HARD, "item_id": "i%d" % i},
+                    runner.make_validator(GSM_HARD))
+        rows = list(_csv_rows(path))
+        check("trigger", "the pulse ordinal increments once per call",
+              [r["trigger_pulse_n"] for r in rows] == ["1", "2", "3"],
+              str([r["trigger_pulse_n"] for r in rows]))
+        check("trigger", "the edge cost reaches the row",
+              all(r["trigger_edge_us"] == "12.5" for r in rows))
+        check("trigger", "a clean run leaves hw_status empty",
+              all(r["hw_status"] == "" for r in rows))
+
+    class FailingMeter(client_module.EnergyMeter):
+        def stop(self):
+            return dict(client_module.EnergyMeter.stop(self),
+                        energy_j_ina_soc=float("nan"),
+                        faults=("meter_rail_unreadable",))
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "calls.csv"
+        with RecordWriter(path, {"kind": "selftest"}) as writer:
+            client = StubClient([answered("42")], writer=writer)
+            client.meter = FailingMeter()
+            client.call_with_retries("p", 0.7, 101, {"dataset": GSM_HARD},
+                                     runner.make_validator(GSM_HARD))
+        row = list(_csv_rows(path))[0]
+        check("trigger", "a meter fault reaches hw_status on the row",
+              row["hw_status"] == "meter_rail_unreadable", row["hw_status"])
+        check("trigger", "the failed rail is nan in the file, not 0.0",
+              row["energy_j_ina_soc"] == "nan", row["energy_j_ina_soc"])
+
+
+def _csv_rows(path):
+    import csv as _csv
+    return list(_csv.DictReader(open(path, encoding="utf-8")))
+
+
+def _isnan(value):
+    return value != value
+
+
 def test_runner_end_to_end():
     """One real block, stub model, real files. Covers what unit checks cannot.
 
@@ -590,16 +1547,7 @@ def test_runner_end_to_end():
     """
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
-        (root / "data" / "items").mkdir(parents=True)
-        for name in config.DATASETS:
-            items = [{"id": "%s-%05d" % (name, i), "rank": i,
-                      "question": "q%d" % i, "answer": "42",
-                      "context": "c%d" % i if name == HOTPOTQA else None,
-                      "level": None}
-                     for i in range(2)]
-            (root / "data" / "items" / ("items_%s.json" % name)).write_text(
-                json.dumps({"sha256": ds.items_hash(items), "items": items}))
-
+        _write_items(root)
         client = StubClient([answered("42")] * 4000)
         run = runner.Runner(client, root, out_dir=root / "out", run_id="selftest")
         dataset, condition, temperature = config.DATASETS[0], "baseline", 0.2
@@ -758,8 +1706,14 @@ def _raises_runtime(fn):
 def main():
     for fn in (test_extraction, test_grading, test_gold_shape, test_prompt_surface,
                test_seed_spacing, test_screen_campaign_agreement, test_topologies,
-               test_payload_and_cache, test_band, test_serialisation,
-               test_records, test_runner_end_to_end, test_items_and_config):
+               test_payload_and_cache, test_debug_truncated_capture, test_band, test_serialisation,
+               test_records, test_run_refuses_while_unvalidated,
+               test_entry_point_guards, test_thermal_gate, test_jetson_sysfs,
+               test_block_settle, test_gpio_abi, test_rail_discovery,
+               test_energy_integration, test_meter_faults, test_sysfs_permissions,
+               test_hw_status_column, test_trigger_pulse_join,
+               test_runner_end_to_end, test_full_campaign_and_resume,
+               test_items_and_config):
         fn()
 
     section = None

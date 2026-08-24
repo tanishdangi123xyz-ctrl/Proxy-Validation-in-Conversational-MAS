@@ -10,31 +10,52 @@ parallel first round is parallel in its conditioning, not in time.
 
 Hardware sits behind three interfaces with no-op implementations, so the whole
 orchestrator runs on a laptop against a local llama.cpp before the Jetson
-exists. Only the three real implementations remain untested at deploy time.
+exists. The real implementations live in jetson.py over the drivers in gpio.py
+and ina3221.py, and none of them appear here: this file is what a reader has to
+follow to be convinced the trigger brackets exactly one call, and it is worth
+keeping short enough to read.
+
+A hardware read that fails is recorded and the run continues. Every reading
+returned to this module therefore carries a faults tuple alongside its values,
+which is collected into the hw_status column, and every failed measurement is
+NaN rather than zero. See the schema docstring in records.py for why.
 
 Standard library only, Python 3.10 compatible.
 """
 
 import json
+import sys
 import threading
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from . import chat, config
-from .records import CallRecord, utc_now
+from .records import CallRecord, hw_status as records_hw_status, utc_now
 
 _CALL_LOCK = threading.Lock()
 
 
 class Trigger:
-    """Raises a line the sampler watches to mark one call's boundaries."""
+    """Raises a line the sampler watches to mark one call's boundaries.
+
+    status() is read once per call, after the trigger has gone low. It carries
+    the pulse ordinal, which is what joins a row to the external rig's stream:
+    the ESP32 keeps its own clock, so timestamps cannot align the two, but the
+    nth pulse it counted is the nth call this process made. A missed edge then
+    shows as a gap in the sequence rather than as a one-row offset that
+    silently misattributes every call after it.
+    """
 
     def high(self):
         return time.time()
 
     def low(self):
         return time.time()
+
+    def status(self):
+        return {"trigger_pulse_n": 0, "trigger_edge_us": 0.0, "faults": ()}
 
     def close(self):
         pass
@@ -62,11 +83,21 @@ class Device:
             "freq_emc": 0,
             "nvpmodel_mode": str(config.NVPMODEL_MODE or ""),
             "fan_pwm": config.FAN_PWM,
+            "faults": (),
         }
+
+    def close(self):
+        pass
 
 
 class EnergyMeter:
-    """External INA226 rig plus the onboard rails."""
+    """The onboard rails, and the columns the external rig fills in later.
+
+    energy_j_external is never produced here. The external INA226 is on the
+    ESP32's bus and the ESP32 is hosted by the logging laptop, deliberately, so
+    that the instrument's own draw stays outside the shunt. Nothing running on
+    the Jetson can read it; the column is joined afterwards on trigger_pulse_n.
+    """
 
     def start(self):
         pass
@@ -78,6 +109,10 @@ class EnergyMeter:
             "energy_j_ina_cpu_gpu_cv": 0.0,
             "energy_j_ina_soc": 0.0,
             "idle_w_reference": 0.0,
+            "meter_samples_n": 0,
+            "meter_rate_hz": 0.0,
+            "meter_window_s": 0.0,
+            "faults": (),
         }
 
     def measure_idle(self, seconds):
@@ -88,7 +123,11 @@ class EnergyMeter:
         would attribute static residency to every call.
         """
         return {"idle_w_external": 0.0, "idle_w_ina_vdd_in": 0.0,
-                "duration_s": float(seconds)}
+                "duration_s": float(seconds), "meter_samples_n": 0,
+                "meter_rate_hz": 0.0, "faults": ()}
+
+    def close(self):
+        pass
 
 
 class NullTrigger(Trigger):
@@ -125,7 +164,7 @@ class LlamaClient:
     """Issues calls to llama.cpp and writes one record per call."""
 
     def __init__(self, writer, trigger=None, device=None, meter=None,
-                 host=None, port=None, run_id=""):
+                 host=None, port=None, run_id="", debug_truncated_dir=None):
         self.writer = writer
         self.trigger = trigger or NullTrigger()
         self.device = device or NullDevice()
@@ -133,9 +172,17 @@ class LlamaClient:
         self.host = host or config.SERVER_HOST
         self.port = port or config.SERVER_PORT
         self.run_id = run_id
+        self.consecutive_faults = 0
         self.config_hash = config.config_hash()
         self.prompts_hash = chat.prompts_hash()
         self._url = "http://%s:%d/completion" % (self.host, self.port)
+        # None by default: zero cost, zero behaviour difference to any call.
+        # Set to inspect what the model was doing when it hit MAX_TOKENS,
+        # which the CSV cannot answer because raw completion text is not a
+        # measurement and is not stored there. Written after the trigger has
+        # already gone low, so it cannot perturb a measured window.
+        self.debug_truncated_dir = (Path(debug_truncated_dir)
+                                     if debug_truncated_dir else None)
 
     def _payload(self, prompt, temperature, seed):
         """Every sampler the server has a default for is named explicitly.
@@ -184,6 +231,36 @@ class LlamaClient:
         except Exception:
             return False
 
+    def _hw_status(self, *readings):
+        """Every fault this call collected, as one cell, and shout if they persist.
+
+        Faults never stop a run. A ten-day campaign that dies on day six
+        because a fan controller went quiet has lost six days of accuracy data
+        along with the energy data, whereas a run that flags the affected rows
+        keeps everything and loses only the blocks that were actually spoiled.
+
+        What faults do get is loud. A single flagged row is a glitch; a
+        hundred consecutive flagged rows is an instrument that came unplugged
+        during the night, and the difference has to be visible in the terminal
+        rather than only in a column nobody reads until the campaign ends.
+        """
+        faults = set()
+        for reading in readings:
+            faults.update(reading.get("faults", ()))
+        status = records_hw_status(faults)
+
+        if not status:
+            self.consecutive_faults = 0
+            return status
+
+        self.consecutive_faults += 1
+        alert_every = max(1, int(config.HW_FAULT_ALERT_EVERY))
+        if self.consecutive_faults % alert_every == 0:
+            sys.stderr.write(
+                "  hardware fault on %d consecutive calls: %s\n"
+                % (self.consecutive_faults, status))
+        return status
+
     def call(self, prompt, temperature, seed, context):
         """Issue exactly one model call and write exactly one record.
 
@@ -208,6 +285,7 @@ class LlamaClient:
                 energy = self.meter.stop()
 
             after = self.device.read_state()
+            pulse = self.trigger.status()
 
         # Response validation lives here rather than in _post so it covers any
         # transport, and so it runs after the trigger has gone low. llama.cpp
@@ -263,12 +341,19 @@ class LlamaClient:
 
             trigger_high_ts=t_high,
             trigger_low_ts=t_low,
+            trigger_pulse_n=int(pulse["trigger_pulse_n"]),
+            trigger_edge_us=float(pulse["trigger_edge_us"]),
 
             energy_j_external=energy["energy_j_external"],
             energy_j_ina_vdd_in=energy["energy_j_ina_vdd_in"],
             energy_j_ina_cpu_gpu_cv=energy["energy_j_ina_cpu_gpu_cv"],
             energy_j_ina_soc=energy["energy_j_ina_soc"],
             idle_w_reference=energy["idle_w_reference"],
+
+            meter_samples_n=int(energy["meter_samples_n"]),
+            meter_rate_hz=float(energy["meter_rate_hz"]),
+            meter_window_s=float(energy["meter_window_s"]),
+            hw_status=self._hw_status(pulse, energy, before, after),
 
             temp_c_soc_before=before["temp_c_soc"],
             temp_c_soc_after=after["temp_c_soc"],
@@ -289,6 +374,18 @@ class LlamaClient:
             truncated=bool(resp.get("truncated", False)),
             thinking_leak=("<think>" in text or "</think>" in text),
         )
+
+        if self.debug_truncated_dir and record.finish_reason == "limit":
+            self.debug_truncated_dir.mkdir(parents=True, exist_ok=True)
+            name = ("%s-%s-t%s-round%d-%s.txt"
+                    % (record.dataset or "?", record.item_id or "?",
+                       temperature, record.round_index,
+                       record.timestamp_utc.replace(":", "")))
+            (self.debug_truncated_dir / name).write_text(
+                "PROMPT\n======\n%s\n\nCOMPLETION (cut off at MAX_TOKENS)\n"
+                "===================================\n%s\n" % (prompt, text),
+                encoding="utf-8")
+
         return text, record
 
     def call_with_retries(self, prompt, temperature, seed, context, validator):

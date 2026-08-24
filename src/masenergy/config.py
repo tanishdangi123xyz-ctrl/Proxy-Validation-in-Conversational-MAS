@@ -90,13 +90,35 @@ MAX_REPROMPTS = 2
 THERMAL_TARGET_C = None
 THERMAL_TOLERANCE_C = 1.0
 THERMAL_TIMEOUT_S = 300.0
+THERMAL_POLL_S = 2.0
 BLOCK_SETTLE_S = 300.0
+SETTLE_POLL_S = 1.0
 
 IDLE_WINDOW_S = 10.0
 IDLE_EVERY_N_CALLS = 20
 
 NVPMODEL_MODE = None
 FAN_PWM = 255
+
+# The trigger pin. Left unset because it is a property of the carrier board's
+# device tree, not something that can be chosen from a laptop, and a guessed
+# line number would either fail to claim or drive the wrong pin. Bring-up runs
+# check_device.py --gpio, which lists every chip and every free line with its
+# name, and both values are pasted in from that output.
+TRIGGER_CHIP = None
+TRIGGER_LINE = None
+TRIGGER_CONSUMER = "masenergy"
+
+# Onboard INA3221 sampling. The three-channel conversion cycle is about 6.6 ms,
+# so the ceiling here is roughly 150 Hz however fast this polls; sampling a
+# little faster than the hardware converts costs one sysfs read and yields
+# duplicate points, which a trapezoid integrates exactly. METER_RATE_FLOOR_HZ
+# is the rate below which a window is flagged rather than trusted: it is set
+# well under the achievable rate so that it fires on a starved sampler, not on
+# ordinary scheduling jitter.
+METER_POLL_S = 0.005
+METER_RATE_FLOOR_HZ = 20.0
+HW_FAULT_ALERT_EVERY = 10
 
 DATASETS = ("gsm_hard", "hotpotqa")
 N_ITEMS = 80
@@ -112,6 +134,7 @@ REQUIRED_BEFORE_RUN = (
     "CTX_SIZE",
     "THERMAL_TARGET_C",
     "NVPMODEL_MODE",
+    "TRIGGER_CHIP", "TRIGGER_LINE",
     "PRICE_IN_PER_M", "PRICE_OUT_PER_M", "PRICE_SOURCE",
 )
 

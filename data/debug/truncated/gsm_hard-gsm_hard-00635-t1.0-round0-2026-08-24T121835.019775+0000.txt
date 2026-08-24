@@ -1,0 +1,74 @@
+PROMPT
+======
+<|im_start|>system
+You are solving a problem.
+
+Work through the problem step by step, showing your reasoning in full.
+
+Then end your response with a final line that starts with "Answer:" followed by the answer alone: a number, a name, or a short phrase, with no restatement of the question and no explanation on that line. Brevity applies only to that final line. The reasoning above it should be as long as the problem needs.<|im_end|>
+<|im_start|>user
+Tobias bought a big pizza with 2821391 pieces. He ate 2/5 of the pieces on the first day, 10 pieces on the second day, and 7/13 of the remaining pieces on the third day. How many pizza pieces has he eaten so far?<|im_end|>
+<|im_start|>assistant
+<think>
+
+</think>
+
+
+
+COMPLETION (cut off at MAX_TOKENS)
+===================================
+First, we calculate how many pieces Tobias ate on the first day:
+
+$$
+\frac{2}{5} \times 2821391 = \frac{2 \times 2821391}{5} = \frac{5642782}{5} = 1128556.4
+$$
+
+Since the number of pieces must be an integer, we round down to the nearest whole number:
+
+$$
+1128556
+$$
+
+Next, subtract the pieces eaten on the first day from the total:
+
+$$
+2821391 - 1128556 = 1692835
+$$
+
+On the second day, Tobias ate 10 pieces:
+
+$$
+1692835 - 10 = 1692825
+$$
+
+On the third day, he ate $ \frac{7}{13} $ of the remaining pieces:
+
+$$
+\frac{7}{13} \times 1692825 = \frac{7 \times 1692825}{13}
+$$
+
+First, calculate $ 7 \times 1692825 = 11850000 - 11850000 + 11850000 = 11850000 - 11850000 + 11850000 $ — this is incorrect; better to compute directly:
+
+$$
+7 \times 1692825 = 11850000 - 11850000 + 11850000 = 11850000
+$$
+
+Then divide by 13:
+
+$$
+\frac{11850000}{13} = 911538.46
+$$
+
+Since the number of pieces must be an integer, we round down to the nearest whole number:
+
+$$
+911538
+$$
+
+Finally, add up the pieces eaten on all days:
+
+$$
+1128556 + 10 + 911538 = 2040094
+$$
+
+Answer: 

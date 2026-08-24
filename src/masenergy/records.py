@@ -29,6 +29,22 @@ Nothing derived is stored. Imputed cost is a function of the token counts and
 the price schedule, so it is computed during analysis; storing it would let a
 price revision silently invalidate old rows.
 
+A failed hardware reading is NaN, never zero, and never absent. Zero joules and
+zero degrees are both physically meaningful values, so writing one for a read
+that did not happen makes a broken instrument indistinguishable from a quiet
+device, and any mean taken over the column afterwards is biased with nothing to
+show for it. NaN propagates instead: an analysis that ignores it breaks loudly
+rather than reporting a smaller number. hw_status names the fault alongside it,
+and the meter_ columns carry the evidence, because the worst failure in this
+chain raises no exception at all. A twelve-second call that collected four
+samples throws nothing, flags nothing, and produces an energy figure that looks
+exactly like data; only the sample count says otherwise.
+
+energy_j_external is the one column no run ever fills. The external rig's
+INA226 sits on the ESP32's bus, hosted by the logging laptop so the instrument
+stays outside the measured domain, and the Jetson has no path to it. It is NaN
+on every row until the join script matches rows to pulses by trigger_pulse_n.
+
 Standard library only, Python 3.10 compatible.
 """
 
@@ -73,12 +89,19 @@ class CallRecord:
 
     trigger_high_ts: float = 0.0
     trigger_low_ts: float = 0.0
+    trigger_pulse_n: int = 0
+    trigger_edge_us: float = 0.0
 
     energy_j_external: float = 0.0
     energy_j_ina_vdd_in: float = 0.0
     energy_j_ina_cpu_gpu_cv: float = 0.0
     energy_j_ina_soc: float = 0.0
     idle_w_reference: float = 0.0
+
+    meter_samples_n: int = 0
+    meter_rate_hz: float = 0.0
+    meter_window_s: float = 0.0
+    hw_status: str = ""
 
     temp_c_soc_before: float = 0.0
     temp_c_soc_after: float = 0.0
@@ -103,6 +126,43 @@ class CallRecord:
 
 
 FIELDS = tuple(f.name for f in dataclass_fields(CallRecord))
+
+# The closed vocabulary of hw_status tokens. Closed on purpose: a status column
+# whose values are formed ad hoc at the call site cannot be counted, and
+# "how many rows are clean" is the first question anyone asks of ten days of
+# data. Adding a fault means adding it here, which is where the analysis
+# looks for the list.
+HW_FAULTS = frozenset((
+    "trigger_edge_failed",
+    "meter_thread_dead",
+    "meter_no_samples",
+    "meter_rate_low",
+    "meter_rail_unreadable",
+    "meter_rail_missing",
+    "soc_temp_unreadable",
+    "cpu_temp_unreadable",
+    "gpu_temp_unreadable",
+    "freq_unreadable",
+    "nvpmodel_unreadable",
+    "fan_unreadable",
+))
+
+
+def hw_status(tokens):
+    """Render fault tokens into one cell: sorted, deduplicated, pipe joined.
+
+    Sorted so the same set of faults always produces the same string and can be
+    grouped on without parsing. An unknown token raises rather than being
+    written, because a typo in a fault name is a fault that never appears in
+    any count of itself.
+    """
+    unique = set(tokens or ())
+    unknown = sorted(unique - HW_FAULTS)
+    if unknown:
+        raise ValueError(
+            "Unknown hw_status token(s) %s. Add them to HW_FAULTS or the "
+            "analysis will never count them." % ", ".join(unknown))
+    return "|".join(sorted(unique))
 
 _FORBIDDEN = ("total_tokens", "tokens", "n_tokens")
 for _name in _FORBIDDEN:
