@@ -11,7 +11,9 @@ power rig exist:
   3. Do debate agents genuinely change their answers between rounds? Below
      roughly 10 percent, debate is a null topology.
   4. Does every topology actually do the thing it is named after, on real
-     model output rather than on a stub?
+     model output rather than on a stub? For `planner_worker` this includes
+     whether the planner actually produces a usable plan, or silently falls
+     back to handing every worker the raw, undecomposed task.
   5. What are the real token lengths, and therefore what should CTX_SIZE be?
 
 All four topologies are exercised, not just baseline and debate. A topology
@@ -75,6 +77,7 @@ def run(n_items, n_topology_items, out_dir, port, debug_truncated_dir=None):
                                           "prompt": 0, "predicted": 0})
     debate_answers = defaultdict(dict)
     critic_traces = defaultdict(list)
+    planner_plan_ok = defaultdict(list)
 
     with RecordWriter(out, {"run_id": run_id, "kind": "dry_run",
                             "n_items": n_items,
@@ -131,15 +134,17 @@ def run(n_items, n_topology_items, out_dir, port, debug_truncated_dir=None):
                         critic_traces[dataset].append(
                             [(r.role, r.round_index, r.prompt_n, r.predicted_n)
                              for r in result["records"]])
+                    if name == "planner_worker":
+                        planner_plan_ok[dataset].append(bool(result.get("plan_ok")))
                     sys.stderr.write("+" if hit else ".")
                 sys.stderr.write("  %d calls\n" % stats["calls"])
 
     report(out, accuracy, topology_stats, debate_answers, critic_traces,
-           n_topology_items)
+           planner_plan_ok, n_topology_items)
 
 
 def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces,
-           n_topology_items):
+           planner_plan_ok, n_topology_items):
     rows = list(csv.DictReader(open(calls_path, encoding="utf-8")))
     print("\n" + "=" * 72)
     print("DRY RUN REPORT   %d call records   config %s"
@@ -231,6 +236,19 @@ def report(calls_path, accuracy, topology_stats, debate_answers, critic_traces,
         print("   %-10s prompt grew %4.0f tokens, draft+critique is %4.0f   %s"
               % (dataset, got, want,
                  "OK" if ok else "*** CRITIQUE NOT REACHING SOLVER ***"))
+
+    print("\n   a planner that fails to produce %d well-formed subtasks after its"
+          % config.PLANNER_WORKER_SUBTASKS)
+    print("   retries falls back to handing every worker the raw, undecomposed")
+    print("   task (planner_worker.py's own fallback), which is not delegation:")
+    for dataset in sorted(planner_plan_ok):
+        oks = planner_plan_ok[dataset]
+        if not oks:
+            continue
+        ok_n, total = sum(oks), len(oks)
+        verdict = "OK" if ok_n == total else "*** PLANNER FELL BACK TO RAW TASK ***"
+        print("   %-10s plan produced on %d of %d items   %s"
+              % (dataset, ok_n, total, verdict))
 
     print("\n5. TOKEN LENGTHS")
     for dataset in sorted(set(r["dataset"] for r in rows if r["dataset"])):

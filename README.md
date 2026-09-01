@@ -211,7 +211,14 @@ done):
 - [ ] 4. `llama.cpp` on the Jetson (works routinely via `serve_dev.sh` on
   development hardware; not yet confirmed running on the physical Jetson
   Orin NX itself)
-- [ ] 5. Model download and throughput calibration
+- [ ] 5. Model download and throughput calibration (also covers whether
+  the frozen configuration fits and stays resident in the Jetson's 8 GB,
+  not just how fast it runs; Mac-side investigation on 2026-08-26 put the
+  real memory commitment at roughly 4.2 GB, well short of an initial
+  13.56 GB reading that turned out to be macOS memory-pressure noise, but
+  that number came from macOS's Metal backend, not Jetson's CUDA, so it
+  does not settle the question; see `CHANGES.md`, 2026-08-26, and the
+  Standing Cautions there)
 - [x] 6. `call()` and the record schema (`client.py`, `records.py`, 
   implemented and self-tested)
 - [x] 7. Topologies (all four implemented, self-tested, and exercised
@@ -491,15 +498,39 @@ checked against real evidence and ruled out; see `CHANGES.md`,
 2026-08-24), and it has been decided, deliberately, to proceed without
 touching grading and to document this as an acknowledged limitation of the
 `hotpotqa` accuracy comparisons in the eventual write-up, while noting that
-energy and cost comparisons are unaffected by it. One question remains
-genuinely open and undecided: whether `hotpotqa`'s debate answer-change rate
-sitting almost exactly on the 10% null-topology floor (confirmed, not small-
-sample noise, at n=40 agent-rounds) should be accepted as a documented
-near-null result on that dataset, or treated as a prompt-design problem
-worth fixing before the real campaign begins, a decision explicitly left
-open in `CHANGES.md`'s Standing Cautions because it would move
-`prompts_hash` and therefore needs to be made once, deliberately, not
-discovered mid-campaign.
+energy and cost comparisons are unaffected by it. The question of whether
+`hotpotqa`'s debate answer-change rate sitting almost exactly on the 10%
+null-topology floor (confirmed, not small-sample noise, at n=40
+agent-rounds) was a genuine near-null finding or a prompt-engagement
+problem has been decided: treated as the latter. `debate_agent.txt`'s
+reconsideration instruction was rewritten to require an agent to check a
+peer's specific supporting evidence before keeping or changing its answer,
+rather than reasoning about the peer's answer only in the vague terms the
+old wording allowed (`prompts_hash` moved from `a80170cf67250404` to
+`61e6c78bad256b91`; see `CHANGES.md`, 2026-08-24, for the full rationale
+and the exact wording change). This has since been verified against a live
+dry run at the same sample size as the reading that flagged it:
+`hotpotqa`'s debate change rate moved from 10.0% to 17.5% (7 of 40
+agent-rounds, clear of the >10% floor rather than sitting on it), and
+`debate`'s `hotpotqa` accuracy held at 60%, inside the target band. This
+is confirmed at the sample size tested (`--topology-items 20`), not yet
+re-run at higher power, see `CHANGES.md`, 2026-08-24, for the full
+readout and one minor unresolved side note on `MAX_TOKENS` hits ticking
+up slightly.
+
+`planner_worker` was the last of the four topologies with no dedicated
+behavioural check, only the generic accuracy/calls table every topology
+gets. `dry_run.py` now tracks whether the planner produces a usable plan
+or silently falls back to handing every worker the raw, undecomposed task
+(`planner_worker.py`'s own documented fallback), and the first reading
+against a live server found zero fallbacks on either dataset (20 of 20
+items on both `gsm_hard` and `hotpotqa`; see `CHANGES.md`, 2026-08-26).
+Every topology now has a dedicated check, not just an accuracy number, and
+every one currently passes: `baseline` needs none, `debate` clears the
+>10% floor on both datasets, `solver_critic` shows genuine revision on
+both, `planner_worker` shows zero raw-task fallback on both. Nothing here
+is Jetson-specific, so this closes the agentic-environment recheck on dev
+hardware.
 
 ## 6. What runs where
 
@@ -901,7 +932,7 @@ the Null implementations), host/port, run id, and the new
 `prompts_hash` once at construction. `_payload(prompt, temperature, seed)`
 builds the full JSON body sent to `llama.cpp`'s `/completion` endpoint,
 explicitly naming every sampler parameter `config.py` pins (see Section
-4.2's `config.py` entry for why this matters). `_post(payload)` issues the
+8.2's `config.py` entry for why this matters). `_post(payload)` issues the
 actual HTTP POST via `urllib.request` and raises `ServerError` on any
 transport failure. `health()` returns whether `/health` currently answers
 with HTTP 200. `_hw_status(*readings)` merges the fault sets from every
@@ -1184,7 +1215,7 @@ REJECT` line. `_verdict_validator(text)` is the custom validator passed to
 dataset's normal answer validator), since a critic call is not producing a
 task answer at all. `run(client, task, temperature, seed, ctx, validator)`
 implements the asymmetric solver/critic feedback loop described in Section
-3.3: one initial solver draft, then up to `config.SOLVER_CRITIC_MAX_ITERS`
+5.3: one initial solver draft, then up to `config.SOLVER_CRITIC_MAX_ITERS`
 iterations of critic review followed by (if rejected and iterations remain)
 a solver revision that is shown the critic's entire response text, not
 merely the extracted verdict. Loop exits early the moment a critic verdict
@@ -1260,9 +1291,16 @@ here changes.
   > You are one of several independent problem solvers working on the same
   > task.
   >
-  > When you are shown other solvers' answers, consider them genuinely: if
-  > their reasoning is better than yours, change your answer; if you
-  > believe yours is correct, keep it and say why. Do not simply agree.
+  > When you are shown another solver's answer, engage with the specific
+  > fact, quoted detail, or calculation step behind it, not just their
+  > final line. If their answer differs from yours, find the exact piece
+  > of evidence or working that supports theirs and check it directly
+  > against the source material or your own arithmetic. Change your
+  > answer only when you can point to a specific error in your own prior
+  > evidence or working; otherwise keep your answer and state exactly
+  > which piece of the peer's supporting detail is wrong, missing, or
+  > insufficient. Do not restate your own answer without addressing
+  > theirs, and do not adopt theirs without checking it first.
   >
   > Work through the problem step by step, showing your reasoning in full.
   >
@@ -1271,6 +1309,18 @@ here changes.
   > no restatement of the question and no explanation on that line.
   > Brevity applies only to that final line. The reasoning above it should
   > be as long as the problem needs.
+
+  As of `prompts_hash 61e6c78bad256b91` (2026-08-24), the reconsideration
+  paragraph was rewritten from a vaguer "if their reasoning is better,
+  change your answer" instruction to an evidence-grounded one, specifically
+  to address `hotpotqa`'s debate answer-change rate sitting on the
+  >10% null-topology floor (see Section 5.8 and `CHANGES.md`,
+  2026-08-24). The old wording is not reproduced here; see version control
+  or `CHANGES.md`'s Hash history for it. Verified against a live dry run
+  the same day: `hotpotqa`'s change rate moved from 10.0% to 17.5% at the
+  same sample size, and `debate`'s `hotpotqa` accuracy stayed inside the
+  target band; see `CHANGES.md`'s Standing Cautions and the 2026-08-24
+  verification entry for the full readout.
 
 - **`debate_synthesiser.txt`**: used by `debate`'s final combining call:
 
@@ -1462,11 +1512,13 @@ check passed).
 
 Model-level go/no-go checks against a live `llama.cpp` server, answering the
 five questions listed in its own module docstring and described in Section
-3.7: does the prompt format elicit a parseable answer and does adherence
+5.7: does the prompt format elicit a parseable answer and does adherence
 degrade with temperature; is baseline accuracy inside the target band; do
 debate agents genuinely change their answers between rounds; does every
-topology actually do the thing it is named after; and what are the real
-token lengths (informing `CTX_SIZE`). It also checks that Qwen3's thinking
+topology actually do the thing it is named after, including whether
+`planner_worker`'s planner produces a usable plan or silently falls back to
+the raw task; and what are the real token lengths (informing `CTX_SIZE`).
+It also checks that Qwen3's thinking
 mode is genuinely suppressed, since that is a silent failure mode
 specifically at high temperature. `TOPOLOGY_TEMPERATURE` (0.7) is the fixed
 temperature the four-topology sweep (as opposed to the baseline-only
@@ -1487,29 +1539,37 @@ dataset in `config.DATASETS`, runs the baseline topology across
 `_spread(items, n_items)` at every configured temperature (populating the
 accuracy-band report), and separately runs all four topologies across
 `items[:n_topology_items]` at `TOPOLOGY_TEMPERATURE` (populating the
-topology-behavior, debate-answer-change, and solver-critic-revision-growth
-reports), `n_items` and `n_topology_items` are two genuinely independent
+topology-behavior, debate-answer-change, solver-critic-revision-growth, and
+planner-worker-plan-fallback reports), `n_items` and `n_topology_items` are
+two genuinely independent
 sample-size knobs, sized by two separate CLI flags (`--items` and
 `--topology-items`), specifically because conflating them was a second
 real, documented source of confusion in the project's history: raising
 `--items` alone changes which items land in a `--topology-items`-sized
 slice of them, without changing the actual statistical power behind any
 topology-level conclusion. `report(calls_path, accuracy, topology_stats,
-debate_answers, critic_traces, n_topology_items)` prints the seven numbered
-report sections read from a completed dry run's call-record CSV: (1) format
-adherence by temperature and overall retry rate; (2) baseline accuracy per
-dataset/temperature via `band.format_verdict`, plus a worked explanation of
-how wide the Wilson interval is at the sample size actually used and how
-many items would be needed for tighter half-widths; (3) debate answer-change
-rate per dataset, comparing each agent's round-1 vs round-2 answer and
-flagging `*** NULL TOPOLOGY RISK ***` below 10%; (4) a per-(dataset,
-topology) table of accuracy, calls, and prompt/output tokens per item, plus
-a solver-critic-specific check that a revision's prompt actually grew by
-roughly as much as the draft-plus-critique that was folded into it (flagging
-`*** CRITIQUE NOT REACHING SOLVER ***` if not); (5) token length percentiles
-per dataset and whether `CTX_SIZE` leaves any headroom over the worst
-observed prompt+output, plus counts of calls that hit `MAX_TOKENS` or had
-their prompt truncated by the server; (6) whether any response leaked a raw
+debate_answers, critic_traces, planner_plan_ok, n_topology_items)` prints
+the seven numbered report sections (plus two unnumbered per-topology
+addenda folded into section 4) read from a completed dry run's call-record
+CSV: (1) format adherence by temperature and overall retry rate; (2)
+baseline accuracy per dataset/temperature via `band.format_verdict`, plus a
+worked explanation of how wide the Wilson interval is at the sample size
+actually used and how many items would be needed for tighter half-widths;
+(3) debate answer-change rate per dataset, comparing each agent's round-1
+vs round-2 answer and flagging `*** NULL TOPOLOGY RISK ***` below 10%; (4)
+a per-(dataset, topology) table of accuracy, calls, and prompt/output
+tokens per item, plus two addenda: a solver-critic-specific check that a
+revision's prompt actually grew by roughly as much as the draft-plus-critique
+that was folded into it (flagging `*** CRITIQUE NOT REACHING SOLVER ***` if
+not), and, added this session, a planner-worker-specific check of how many
+items the planner produced a usable, well-formed plan for versus how many
+silently fell back to `planner_worker.py`'s raw-task fallback (flagging
+`*** PLANNER FELL BACK TO RAW TASK ***` on any shortfall, since a planner
+that keeps missing its own format is quietly turning delegation into N
+redundant attempts at the whole task); (5) token length percentiles per
+dataset and whether `CTX_SIZE` leaves any headroom over the worst observed
+prompt+output, plus counts of calls that hit `MAX_TOKENS` or had their
+prompt truncated by the server; (6) whether any response leaked a raw
 `<think>` tag; (7) the `gold_shape()` distribution over every frozen item,
 i.e. how many points of accuracy are structurally unreachable because of
 the reference answers alone, independent of model quality. The `__main__`

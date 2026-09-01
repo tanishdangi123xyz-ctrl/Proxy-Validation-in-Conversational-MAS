@@ -25,7 +25,8 @@ which is what the entries below are.
 | `fcf5f684b0438ca3` | `a80170cf67250404` | 2026-08-22 to 08-23 | `gsm_hard` + `hotpotqa` frozen. Dry runs `045458Z`, `050556Z`. **Grading defects live, see 2026-08-23 entries.** |
 | `295678eeb8606cb8` | `a80170cf67250404` | 2026-08-23 | Samplers pinned, grading repaired, topologies repaired. Dry runs `054825Z`, `055334Z`. |
 | `c704ed501758a150` | `a80170cf67250404` | 2026-08-23, Phase 1.3 only | Adds `THERMAL_POLL_S` and `SETTLE_POLL_S`. No behavioural difference to any call. |
-| `74b943de71fe5fd8` | `a80170cf67250404` | 2026-08-23 onward | **Current.** Adds `TRIGGER_CHIP`, `TRIGGER_LINE`, `TRIGGER_CONSUMER`, `METER_POLL_S`, `METER_RATE_FLOOR_HZ`, `HW_FAULT_ALERT_EVERY`. No behavioural difference to any call, but the hash moved, so rows either side must not be pooled. Dry runs `130219Z`, `131604Z`, `20260824T121313Z`. |
+| `74b943de71fe5fd8` | `a80170cf67250404` | 2026-08-23 to 08-24 | Adds `TRIGGER_CHIP`, `TRIGGER_LINE`, `TRIGGER_CONSUMER`, `METER_POLL_S`, `METER_RATE_FLOOR_HZ`, `HW_FAULT_ALERT_EVERY`. No behavioural difference to any call, but the hash moved, so rows either side must not be pooled. Dry runs `130219Z`, `131604Z`, `20260824T121313Z`. |
+| `74b943de71fe5fd8` | `61e6c78bad256b91` | 2026-08-24 onward | **Current, verified.** `config.py` unchanged from the row above. `debate_agent.txt`'s reconsideration paragraph rewritten to require evidence-grounded engagement with a peer's answer, to address `hotpotqa`'s debate answer-change rate sitting on the null-topology floor. Confirmed by dry run: `hotpotqa` change rate 10.0% -> 17.5% at n=40 agent-rounds, `hotpotqa` debate accuracy 60%, in band. See the 2026-08-24 verification entry. |
 
 Item files are unchanged throughout and hash-verified on every load:
 `gsm_hard` `042ee4fe905b2304`, `hotpotqa` `b036fe9bbe7fc79a`.
@@ -44,12 +45,364 @@ Item files are unchanged throughout and hash-verified on every load:
 | README rewrite and full-repo documentation pass | working tree, uncommitted (docs only) |
 | README style cleanup and setup/layout additions | working tree, uncommitted (docs only) |
 | README section reorder (file structure and setup promoted ahead of the detail section) | working tree, uncommitted (docs only) |
+| `debate_agent.txt` rewrite (evidence-grounded reconsideration, targeting the `hotpotqa` change-rate floor) | working tree, uncommitted |
+| Mac-side memory investigation (frozen config's real footprint, ~4.2 GB) | working tree, uncommitted (docs only) |
+| `dry_run.py` planner_worker plan-fallback check, stale cross-reference fixes | working tree, uncommitted |
 
 `8795032` is the commit that moved `config_hash` to `295678eeb8606cb8`. Anything
 recorded before it carries a different hash and must not be pooled with anything
 recorded after.
 
 ---
+
+## 2026-08-26: Verified: `planner_worker` never falls back, Stage 2 (recheck the agentic environment) closed
+
+Evidence, not a code change. `--items 40 --topology-items 20` against a
+live server, `config_hash 74b943de71fe5fd8` unchanged, 748 call records,
+same shape as every other dry run this session.
+
+**The new check, first result.** `gsm_hard`: plan produced on 20 of 20
+items. `hotpotqa`: plan produced on 20 of 20 items. Zero fallbacks on
+either dataset, at the same `--topology-items 20` sample size the debate
+and solver_critic checks were themselves first read at. The planner is
+reliably emitting `PLANNER_WORKER_SUBTASKS` well-formed subtasks; the
+raw-task fallback `planner_worker.py`'s docstring warns about is a real
+code path but not one this model is actually triggering under the frozen
+prompts and sampler settings.
+
+**Everything else in this run reproduced the prior reading exactly.**
+Debate answer-change rate: `gsm_hard` 27.5% (11/40), `hotpotqa` 17.5%
+(7/40), identical to the post-fix verification run earlier this session,
+same sample, same server, same result, which is itself a small piece of
+confidence that the reading is stable rather than a one-off. Solver-critic
+revision growth: `gsm_hard` 515 vs 508 tokens, `hotpotqa` 155 vs 148,
+both `OK`, unchanged. Format adherence 100% at every temperature, 0/748
+retries, 0/748 thinking-tag leaks, 0 prompt truncations, `MAX_TOKENS` hit
+on 9/748 calls (1.2%), gold-shape counts unchanged (dataset-level, not
+expected to move).
+
+**Stage 2 status.** Every topology now has a dedicated behavioural check,
+not just the generic accuracy/calls table, and every one currently passes:
+`baseline` needs no check (single call). `debate` clears the >10%
+null-topology floor on both datasets. `solver_critic` shows genuine
+revision, not flat-accept, on both datasets. `planner_worker` shows zero
+raw-task fallback on both datasets. Nothing here is Jetson-specific or
+blocked on hardware; this closes the "recheck the agentic environment"
+stage on dev hardware, the same scope Stage 1 was closed at.
+
+## 2026-08-26: `dry_run.py` gets a `planner_worker` plan-fallback check, Stage 2 (recheck the agentic environment) starts here
+
+Not a `config_hash`/`prompts_hash`-moving change: report code only, no
+`config.py` value and no prompt touched, so this is comparable across
+every existing run, retroactively as well as going forward.
+
+**Why this specific check, first.** Going topology by topology before
+trusting any of them going into the real campaign: `baseline` is a single
+call, nothing to check. `debate` has its own dedicated null-topology check
+(section 3, the answer-change-rate floor), just fixed and reverified this
+same session. `solver_critic` has its own dedicated check (the
+revision-prompt-growth test), resolved 2026-08-24. `planner_worker` had
+**no dedicated check at all**, only the generic accuracy/calls table
+every topology gets in section 4. That's a real gap against this file's
+own stated purpose, its module docstring lists "does every topology
+actually do the thing it is named after" as one of the five questions
+`dry_run.py` exists to answer.
+
+`planner_worker.py`'s own docstring documents a concrete failure mode
+nobody was checking for: if the planner fails to emit
+`config.PLANNER_WORKER_SUBTASKS` well-formed numbered subtasks after its
+retries, `run()` silently falls back to `subtasks = [task] *
+config.PLANNER_WORKER_SUBTASKS`, handing every worker the raw,
+undecomposed task instead of a genuine subtask. If that fires often, the
+topology quietly degenerates into "N workers redundantly attempting the
+whole problem," structurally the same kind of null-topology risk debate
+and solver_critic both had and both already got caught for. The code
+already computes this, `plan_ok` comes back in every `planner_worker`
+result dict, it was just never aggregated or reported.
+
+**What changed.** `scripts/dry_run.py`: `run()` now collects
+`planner_plan_ok[dataset]`, one bool per item, whether the planner
+produced a usable plan on that item. `report()` gained a new parameter and
+a new unnumbered addendum to section 4, printed right after the existing
+solver-critic revision-growth check, in the same style: per dataset, how
+many of the sampled items got a real plan versus fell back, flagging
+`*** PLANNER FELL BACK TO RAW TASK ***` on any shortfall. No threshold
+tolerance was applied (unlike debate's >10% floor or the critic's growth
+ratio), there is no existing evidence yet to calibrate a tolerance
+against; this is a first reading, not a recalibrated one, so any fallback
+at all is surfaced rather than silently allowed under an invented cutoff.
+
+Two stale cross-references were also found and fixed while touching this
+section of `README.md`'s Navigation entry for `dry_run.py`: "Section 3.7"
+and, nearby, "Section 3.3" and "Section 4.2" elsewhere in the file, all
+three survivors of the 2026-08-24 section reorder that the reorder's own
+remap pass missed because the section number fell on the line *after* the
+word "Section" due to word-wrapping, the same class of bug the reorder's
+own entry already flagged and partially fixed once; this is evidence that
+class of bug can still hide in wrapped prose after a mechanical remap, not
+a new instance of the original bug recurring.
+
+**Not yet done.** This has not been run. `python3 scripts/dry_run.py
+--items 40 --topology-items 20` against a live server is what would
+actually tell us `planner_worker`'s real fallback rate; until that
+happens, whether this topology has been quietly degenerating on some
+fraction of items is still an open question, exactly the state debate's
+answer-change rate was in before its own check existed.
+
+## 2026-08-26: Mac-side memory investigation: the frozen model's real footprint is roughly 4.2 GB, not 13.56 GB
+
+Not a code change, evidence, and not a Jetson result either; everything
+here was measured on the laptop, and the entry says explicitly where that
+limits what it can claim. `config_hash` and `prompts_hash` both unchanged.
+
+**Where this started.** Activity Monitor showed `llama-server` (this
+project's `serve_dev.sh`, frozen flags, native BF16 Qwen3-1.7B, `CTX_SIZE
+3072`) using 13.56 GB on a 24 GB Mac. Checklist item 5 ("model download and
+throughput calibration") was already flagged as unresolved for the Jetson;
+this reading raised a sharper question underneath it that the checklist
+item's wording didn't originally cover: does the frozen configuration fit
+in 8 GB at all, not just how fast does it run.
+
+**Ground truth from the file itself, no live server needed.** The GGUF
+header was read directly (`struct`-parsed, standard library, the
+metadata section only, not the 3.4 GB of tensor data after it), rather
+than guessed from memory. Confirmed architecture: `qwen3`, 28 layers, 8 KV
+heads, 128 dimensions per head, 2048 embedding length. The model file on
+disk is 3,447,349,568 bytes (3.45 GB); since `LLAMA_FLAGS` includes
+`--no-mmap`, that entire file is read into real memory, not left as
+reclaimable page-cache. The KV cache at the frozen `CTX_SIZE=3072`,
+`KV_CACHE_TYPE=f16`, `--parallel 1` computes to 2 x 28 x 8 x 128 x 3072 x 2
+bytes = 352 MB, using the model's own real dimensions rather than an
+assumed architecture. Weights plus KV cache: **3.8 GB**, computed, not
+measured.
+
+**One flag worth a caution, not a fix.** `serve_dev.sh`'s own output
+prints `DEPRECATED: --mmap and --no-mmap are deprecated. use --load-mode
+mmap instead`. Deprecation normally still honours the old flag, so the
+"whole file lands in real memory" assumption above is very likely still
+correct, but this was not verified against llama.cpp's source for this
+specific build, and the flag disappearing in a future `llama.cpp` update
+would silently invalidate it. Added to Standing Cautions below.
+
+**What `vmmap -summary` on the live process showed, and why it looked
+contradictory at first.** Two snapshots of the same PID (22253), taken a
+few minutes apart, one before firing a completion request and one just
+after:
+
+| | resident | dirty | swapped | dirty+swapped |
+|---|---|---|---|---|
+| snapshot 1, idle | 2.0G | 1.6G | 2.6G | 4.2G |
+| snapshot 2, after a request | 488.0M | 92.6M | 4.2G | 4.3G |
+
+Resident dropped and swapped rose between the two readings, which looks at
+first like the process got colder after being used, backwards from what
+firing a request should do. Read correctly, this is macOS's page
+compressor working under the system-wide memory pressure the same Mac was
+already showing (Activity Monitor's own reading at the time: 24 GB
+physical, 20.87 GB used, 11.03 GB swap, system-wide, across everything
+running, not just this process). Chasing "hot vs. idle" in that
+environment is chasing noise: with a browser, an IDE, and several other
+processes all competing for the same 24 GB, the compressor reshuffles
+which pages are resident versus swapped from one moment to the next
+regardless of what `llama-server` itself is doing.
+
+**The number that survives the noise.** `dirty + swapped`, the memory this
+process actually owns and cannot simply drop for free (unlike a clean
+file-backed page, which can be discarded and re-read), holds essentially
+constant across both snapshots: 4.2 GB and 4.3 GB. Only the split between
+"currently resident" and "currently swapped" moved. That stability, from
+two readings taken under different momentary pressure, is a real result,
+not a coincidence: **the frozen configuration's true memory commitment on
+this Mac is approximately 4.2 GB**, close to the 3.8 GB computed
+independently from the GGUF header, with the remaining ~0.4 GB plausibly
+llama-server's own process overhead and Metal compute buffers, not the
+alarming ~9.7 GB gap the raw 13.56 GB Activity Monitor number had implied.
+
+**What this does and does not settle.** It substantially de-risks the
+"does this even fit" question: 4.2 GB inside an 8 GB Jetson leaves real
+headroom for JetPack, the orchestrator process, and GPIO/thermal handling,
+where 13.56 GB flatly would not have. It does not settle the question,
+because every number above came from macOS's Metal backend, not Jetson's
+CUDA backend, and the ~0.4 GB of backend-specific overhead on top of the
+3.8 GB GGUF-derived floor is not guaranteed to be the same size, or even
+the same sign, under CUDA. The only way to close this for real is the same
+`vmmap`-equivalent measurement (`tegrastats` or `/proc/meminfo`, watched
+during an actual call) on the physical device, which is exactly what
+`check_device.py` still has no memory check for, see Standing Cautions.
+
+**What this also demonstrates, independent of the number.** Under enough
+memory pressure, this Mac's `llama-server` process does get swapped, not
+merely slow, actually paged to disk. That is a direct threat to this
+project's own measurement validity if it happens mid-call on the Jetson:
+swapping during a trigger-bracketed call would corrupt the timing the
+energy attribution depends on. Whether the Jetson, run headless with
+nothing else competing for its 8 GB, would ever reach that pressure is
+unknown and needs its own check, not assumed safe by analogy to a
+24 GB machine that had a browser and an IDE open.
+
+## 2026-08-24: Verified: the `debate_agent.txt` fix clears the `hotpotqa` change-rate floor
+
+Direct follow-up to the entry below. A live dry run against `61e6c78bad256b91`
+was requested there and has now been run: `python3 scripts/dry_run.py --items
+40 --topology-items 20`, 748 call records, `config_hash 74b943de71fe5fd8`
+unchanged, run in Tanish's own terminal. Exact run_id not captured in this
+entry; if it is still needed, `data/raw/dry_*.calls.csv` on the machine that
+ran it, sorted by mtime, has it.
+
+**Item 1, the floor.** Cleared, with real margin this time rather than
+sitting on the boundary. `hotpotqa` debate answer-change rate is 17.5% (7
+of 40 agent-rounds), up from `121313Z`'s 10.0% (4 of 40) under the identical
+`--topology-items 20` methodology, so this is a direct, comparable
+before/after on the same metric at the same sample size. `gsm_hard`, which
+did not need fixing, held steady: 27.5% (11 of 40) against `121313Z`'s 30%
+(12 of 40), a one-agent-round difference that is ordinary sampling noise,
+not a regression the prompt rewrite caused.
+
+**Item 2, accuracy.** `hotpotqa` debate accuracy is 60% (12/20), inside the
+45-70% target band and close to `hotpotqa` baseline's own 65% at the same
+small n. No sign that pushing agents to justify keeping or changing an
+answer cost them correct answers. `gsm_hard` debate reads high at 75%
+(15/20) against a baseline of roughly 55-60% at these temperatures; this
+report does not compute a confidence interval for section 4's per-topology
+accuracy the way section 2 does for baseline, so this reads as a
+noteworthy but statistically unresolved number, not a confirmed
+improvement, at `--topology-items 20`. Not a concern for the fix under
+review, since `gsm_hard`'s change rate was already healthy before this
+change and the fix's own target was `hotpotqa`.
+
+**Mechanically clean.** Format adherence 100% at every temperature, 0/748
+retries, 0/748 thinking-tag leaks, 0 prompts truncated by context. The
+`solver_critic` revision-prompt-growth check, unrelated to this change but
+a general trip-wire for the pipeline, still passes both datasets
+(`gsm_hard` grew 515 tokens against an expected 508, `hotpotqa` 155 against
+148), confirming the debate-only prompt edit did not disturb anything
+outside `debate.py`'s own topology.
+
+**One honest side effect, not yet investigated.** `MAX_TOKENS` (512) was
+hit on 9 of 748 calls (1.2%), up from `121313Z`'s 7 of 748 (0.9%). Context
+budget is not the cause: 0 prompts were truncated and 1323 tokens of
+headroom remain under `CTX_SIZE` at the worst observed prompt+output
+(1749). The new reconsideration paragraph asks an agent to name specific
+evidence either way, which plausibly makes some completions run longer;
+plausible, not confirmed, since which calls hit the cap and on which
+dataset was not read from the raw completions the way the `121313Z` entry
+did with `--debug-truncated`. Small enough (2 extra calls) that it does not
+change this entry's verdict, but worth a `--debug-truncated` pass if the
+rate climbs on a larger run.
+
+**Verdict: fix confirmed at the sample size tested, not yet a permanent
+close-out.** Both conditions the entry below set for treating this as
+resolved are met: the floor is cleared with margin, and `hotpotqa` debate
+accuracy stays in band. This is still the same `--topology-items 20`
+sample size as the reading it is being compared against, not more power
+than before, so it should be read as "the fix worked at n=40, twice
+measured under two different prompt versions" rather than as a
+statistically settled result; a larger `--topology-items` pass before the
+real campaign locks in would resolve this the same way the baseline
+accuracy band still needs more items to resolve. The Standing Caution
+below is updated to reflect a verified, not merely applied, fix.
+
+## 2026-08-24: `debate_agent.txt` rewritten to fix the `hotpotqa` answer-change-rate floor
+
+`prompts_hash` moves: `a80170cf67250404` -> `61e6c78bad256b91`. `config_hash`
+unchanged (`74b943de71fe5fd8`); nothing in `config.py` touched. **This entry
+records a decision and the change made to act on it. It does not record a
+verification, because none has happened yet; see "What is still open"
+below before treating any `debate`/`hotpotqa` row under the new hash as
+validated.**
+
+**The question being closed.** The 2026-08-24 `121313Z` entry above left
+open whether `hotpotqa`'s debate answer-change rate sitting exactly on the
+>10% null-topology floor (10.0%, confirmed at n=40 agent-rounds, not
+small-sample noise) was a genuine near-null finding about this dataset, or
+a prompt-engagement problem worth fixing before committing to it in the
+real campaign. Decided: treat it as the latter, on request.
+
+**Why this reads as an engagement problem rather than "nothing to
+disagree about."** Ruled out first: this is not a repeat of the
+`DEBATE_SHOWS_OWN_PRIOR` bug (`config.py`'s comment on that flag, and see
+`debate.py`'s own docstring). That bug is about an agent having no memory
+of its own prior answer; it is fixed, and has been on since before
+`121313Z`. `debate.py` also already passes each peer's *full* raw response,
+reasoning included, not just their final line, into the next round's
+prompt, so an agent is not being asked to reconsider blind. What is
+missing is direction: the old reconsideration paragraph ("if their
+reasoning is better than yours, change your answer") does not tell the
+model what "better" means or where to look for it. For `gsm_hard`, open-
+ended multi-step arithmetic gives two independently-computing agents
+natural surface variance to catch, right or wrong, so the vague instruction
+still has something to bite on (`gsm_hard` debate change rate is a healthy
+30%). For `hotpotqa`, short factual-span extraction from a passage does
+not have that variance; once a model has quoted what it believes is the
+right entity, a vague "was their reasoning better" invites it to just
+restate its own line rather than actually checking the peer's specific
+claim, which reads as agreement without engagement, not agreement because
+both agents are correctly converging on a genuinely unambiguous answer.
+
+**What changed.** `debate_agent.txt`'s middle paragraph, the only part of
+this file the topology's deliberation behaviour turns on, replaced:
+
+> When you are shown other solvers' answers, consider them genuinely: if
+> their reasoning is better than yours, change your answer; if you believe
+> yours is correct, keep it and say why. Do not simply agree.
+
+with:
+
+> When you are shown another solver's answer, engage with the specific
+> fact, quoted detail, or calculation step behind it, not just their final
+> line. If their answer differs from yours, find the exact piece of
+> evidence or working that supports theirs and check it directly against
+> the source material or your own arithmetic. Change your answer only when
+> you can point to a specific error in your own prior evidence or working;
+> otherwise keep your answer and state exactly which piece of the peer's
+> supporting detail is wrong, missing, or insufficient. Do not restate your
+> own answer without addressing theirs, and do not adopt theirs without
+> checking it first.
+
+Nothing else in the file changed: the working-through-the-problem
+instruction and the `Answer:` line format are untouched, so this is
+purely a deliberation-behaviour change, not a format or output-schema
+change.
+
+**Why this wording, specifically, rather than just telling the model to
+change its answer more often.** A prompt that simply pressured agents to
+flip more often would raise the change-rate number without raising genuine
+deliberation, which is exactly the failure mode `DEBATE_SHOWS_OWN_PRIOR`'s
+own docstring warns about: "looks like vigorous disagreement... while no
+deliberation is happening." That would be gaming the metric, not fixing
+the topology, and this file's own rule is that a change made to move a
+number after seeing it has to be argued in writing, not just made. The new
+wording is built to raise genuine engagement specifically: it requires an
+agent to name a specific fact or step behind a differing answer in either
+direction, whether it ends up keeping its own answer or changing it, and it
+gates a change on finding a specific error rather than general unease. If
+this is working as intended, both `hotpotqa`'s change rate should move and
+the reasoning text preceding each `Answer:` line should visibly reference
+specific details from the peer's response, not just restate the agent's
+own working; the second of those is worth spot-checking by hand on the
+next dry run's raw completions, not just reading the aggregate percentage.
+
+**What is still open, and needs a live dry run to close.** This change has
+not been run against a live `llama.cpp` server. Two things need checking,
+not assumed:
+
+1. Does `hotpotqa`'s debate answer-change rate clear the >10% floor under
+   the new wording, at a sample size large enough to trust (`121313Z`'s
+   n=40 is the bar already cleared once; `--topology-items 20` reproduces
+   it).
+2. Does `debate`'s `hotpotqa` accuracy stay inside the target band. A
+   wording that makes agents more willing to change an answer under peer
+   pressure could, as a side effect, make them abandon correct answers
+   more often too; a change-rate fix that quietly costs accuracy is not a
+   fix, it just moves which number looks wrong.
+
+Run `python3 scripts/dry_run.py --topology-items 20` (plus `--items 40` to
+also keep power on the other sections) against a live server and read
+sections 2 and 3 of its report for both. Until that happens, the Standing
+Caution above stands: no `debate`/`hotpotqa` row recorded under
+`61e6c78bad256b91` should be treated as a validated topology, only as data
+collected under a hash that has not yet been checked against its own
+purpose.
 
 ## 2026-08-24: README section reorder, file structure and setup moved ahead of the detail section
 
@@ -1006,6 +1359,22 @@ without `--force`. **Do not regenerate one dataset mid-campaign.**
 
 ## Standing cautions
 
+- **Whether the frozen model configuration fits and stays resident in the
+  Jetson's 8 GB is estimated, not confirmed.** Mac-side investigation
+  (2026-08-26) puts the real memory commitment at roughly 4.2 GB (GGUF
+  header math and live `vmmap` agree), not the 13.56 GB an initial
+  Activity Monitor reading suggested. That number came from macOS's Metal
+  backend; Jetson runs CUDA, and the backend-overhead slice on top of the
+  3.8 GB weights-plus-KV-cache floor is not guaranteed to transfer.
+  Separately, the same investigation directly observed this Mac's
+  `llama-server` process being swapped to disk under ordinary
+  multi-app memory pressure, not merely slowed, which would corrupt
+  trigger-bracketed timing if it happened mid-call on the Jetson.
+  `check_device.py` currently has no memory check at all (only thermal
+  zone names, GPIO chip/line discovery, and INA3221 hwmon labels); adding
+  one, watching `tegrastats`/`/proc/meminfo` during a real call on the
+  physical device, is the only way to close this for real rather than by
+  analogy to a 24 GB machine with a browser and an IDE competing for RAM.
 - **`items_gsm8k.json` is still in `data/items/`** and is not in
   `config.DATASETS`. A stale item file in the directory the runner globs.
 - **`Trigger` and `EnergyMeter` are real as of Phase 1.4, but unverified on
@@ -1031,14 +1400,25 @@ without `--force`. **Do not regenerate one dataset mid-campaign.**
   which 5 items got sampled, not enough power to call it either way. This
   reading used 4x the topology-items and is trustworthy. Retest if the critic
   prompt ever changes.
-- **`hotpotqa` debate answer-change rate is 10.0%, confirmed at n=40
-  agent-rounds (`121313Z`, 2026-08-24), sitting exactly on the >10%
-  null-topology floor.** Not the small-n noise `131604Z` left open; same
-  number at 4x the sample. `gsm_hard` debate is fine (30%). Needs a decision:
-  accept as a documented near-null result on this dataset, or treat the
-  agents' anchoring to their own first answer as a prompt problem worth
-  fixing. Either way, this is a `prompts_hash`-moving call, same category as
-  the critic-prompt question above.
+- **`hotpotqa` debate answer-change rate was 10.0% at n=40 agent-rounds
+  (`121313Z`, 2026-08-24), sitting exactly on the >10% null-topology floor.
+  Decided 2026-08-24: treat as a prompt-engagement problem, not a documented
+  near-null result, and fix it. Verified 2026-08-24.** `debate_agent.txt`'s
+  reconsideration paragraph was rewritten to require an agent to check a
+  peer's specific supporting evidence before keeping or changing its answer
+  (`prompts_hash` moved `a80170cf67250404` -> `61e6c78bad256b91`). A dry run
+  at the same `--topology-items 20` sample size (`--items 40
+  --topology-items 20`) confirms it: `hotpotqa` change rate 10.0% -> 17.5%
+  (7 of 40, clear of the floor rather than sitting on it), `debate`
+  `hotpotqa` accuracy 60%, inside the 45-70% target band, `gsm_hard`'s
+  already-healthy change rate held steady at 27.5% (was 30%). See the
+  2026-08-24 verification entry for the full readout, including one
+  unresolved minor side note (`MAX_TOKENS` hits ticked up from 0.9% to
+  1.2% of all calls, not yet read from raw completions). This is confirmed
+  at the sample size tested, not yet re-run at higher power; treat a
+  `debate`/`hotpotqa` row under `61e6c78bad256b91` as measuring a topology
+  that has now cleared its own bring-up gate, not as a statistically
+  settled result the way the baseline accuracy band still isn't.
 - **A `llama-server` predating this work was found running on port 8080**
   without `--no-cont-batching`; it blocked `serve_dev.sh` mid-session on
   2026-08-23 and was killed by hand. Not a code fix, so it can recur, if a
