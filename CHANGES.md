@@ -56,6 +56,7 @@ Item files are unchanged throughout and hash-verified on every load:
 | NVPMODEL_MODE research: a recommendation ready, still not set | working tree, uncommitted (docs only, config.py unchanged) |
 | Hardware safety watchdog: stops a campaign before heat damages the board | working tree, uncommitted |
 | Kernel thermal trip points surfaced in check_device.py, an independent backstop | working tree, uncommitted |
+| requirements.txt gains huggingface_hub, README documents the actual model-download step | working tree, uncommitted (docs plus one dependency line) |
 
 `8795032` is the commit that moved `config_hash` to `295678eeb8606cb8`. Anything
 recorded before it carries a different hash and must not be pooled with anything
@@ -177,6 +178,47 @@ INA226-based firmware and has not been updated for the new design; the
 100 mOhm shunt and the two divider resistors are not wired in yet, so
 current and bus voltage readings still cannot be confirmed sane against a
 multimeter.
+
+## 2026-09-06: requirements.txt gains huggingface_hub, README documents the actual model-download step
+
+Docs and one dependency line, no `config.py` value changed.
+
+**Why.** Real Jetson bring-up started today (see the entry above and
+`CHANGES.md`'s "Where these changes live" table). Getting the model onto
+the device surfaced a real gap: `scripts/find_model.py` already imports
+`huggingface_hub`, but that dependency was never added to
+`requirements.txt`, and, separately, `find_model.py` itself only ever
+lists candidate repos, it does not download anything, which is not
+obvious from its name and was not previously spelled out anywhere in the
+README. There is no dedicated download script anywhere in this
+repository; the actual fetch is a one-off `hf_hub_download()` call using
+the values `config.py` already pins (`MODEL_REPO`, `MODEL_FILE`,
+`MODEL_REVISION`), and that call had never been written down anywhere a
+future bring-up could find it.
+
+**What was fixed.** `requirements.txt` gains `huggingface_hub`, with a
+comment explaining it does not quite fit the file's own "LAPTOP ONLY"
+header: it is needed on whichever machine actually issues the model
+download, which in this project's real bring-up has been the Jetson
+itself (it has its own internet access, and the model has to live there
+for `llama.cpp` regardless of where it was fetched from), not necessarily
+the laptop like every other line in that file. The README's
+`requirements.txt` bullet in Section 3 and `scripts/find_model.py`'s own
+Section 8 subsection both gained a paragraph spelling out the actual
+download command (`hf_hub_download(repo_id=config.MODEL_REPO,
+filename=config.MODEL_FILE, revision=config.MODEL_REVISION)`, copied to
+`config.resolve_model_path()`), pinning the exact revision deliberately so
+a later re-run cannot silently fetch a newer upload of the same filename
+under a different `config_hash()`.
+
+**What is still open.** This has been run once, manually, on the real
+Jetson as part of today's bring-up, but is not yet its own tested script
+or function anywhere in this codebase, only a documented one-off command.
+If model re-downloads turn out to be a recurring bring-up step (a second
+Jetson, a wiped SD card, a fresh flash), it would be worth promoting this
+into a real `scripts/download_model.py` with its own error handling and a
+revision-mismatch check, rather than leaving it as a copy-pasted snippet;
+not done here because it has only been needed once so far.
 
 ## 2026-09-06: Kernel thermal trip points surfaced in check_device.py, an independent backstop behind the software watchdog
 

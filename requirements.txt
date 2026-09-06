@@ -16,3 +16,16 @@ matplotlib
 
 # Dataset preparation (laptop-side; ships plain JSON to the Jetson)
 datasets
+
+# Model sourcing: scripts/find_model.py (lists candidate native-precision
+# GGUF files on HuggingFace) and the one-off hf_hub_download() call that
+# actually fetches config.MODEL_FILE at config.MODEL_REVISION into
+# models/. This header's "LAPTOP ONLY" label does not quite fit this one:
+# unlike every other dependency above, this is needed on whichever machine
+# actually issues the download, which in practice has been the Jetson
+# itself (it has its own internet access and the model has to live there
+# for llama.cpp anyway), not necessarily the laptop. Listed here rather
+# than in a Jetson-side file because src/masenergy/ itself must stay at
+# zero dependencies per the rule above; this is scripts/-only, never
+# imported by anything under src/.
+huggingface_hub

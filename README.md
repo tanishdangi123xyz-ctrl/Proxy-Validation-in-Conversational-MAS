@@ -748,13 +748,25 @@ experimental protocol and changing a single word changes `prompts_hash`.
   and the current state of the self-test suite. See Section 9 below; this
   is where every change or fix made to any file in this repository, past or
   future, is recorded.
-- **`requirements.txt`**: laptop-only Python dependencies: `pyserial` (ESP32
-  serial capture), `numpy`/`pandas`/`scipy`/`statsmodels`/`matplotlib`
-  (offline analysis), and `datasets` (HuggingFace dataset loading, used only
-  by `scripts/prepare_datasets.py` and `scripts/screen_datasets.py`). The
-  file's own comment states the rule it exists to enforce: `src/masenergy/`
-  must never gain a dependency on anything listed here, because that code
-  has to run unmodified on the Jetson's bare system Python.
+- **`requirements.txt`**: Python dependencies outside `src/masenergy/`
+  itself: `pyserial` (ESP32 serial capture), `numpy`/`pandas`/`scipy`/
+  `statsmodels`/`matplotlib` (offline analysis), `datasets` (HuggingFace
+  dataset loading, used only by `scripts/prepare_datasets.py` and
+  `scripts/screen_datasets.py`), and, added 2026-09-06,
+  `huggingface_hub` (`scripts/find_model.py`, and the one-off
+  `hf_hub_download()` call bring-up uses to actually fetch
+  `config.MODEL_FILE` at the pinned `config.MODEL_REVISION` into `models/`,
+  see that script's Section 8 subsection). Most of this file is laptop-only
+  in practice, but `huggingface_hub` is the one entry that is not: it is
+  needed on whichever machine actually issues the model download, which in
+  this project's real bring-up has been the Jetson itself, since it has
+  its own internet access and the model has to live there for `llama.cpp`
+  regardless of where it was fetched from. The file's own comment states
+  the rule every entry here still has to respect: `src/masenergy/` must
+  never gain a dependency on anything listed here, because that code has
+  to run unmodified on the Jetson's bare system Python; `huggingface_hub`
+  is `scripts/`-only and never imported by anything under `src/`, so it
+  does not violate that rule even though it runs on the Jetson.
 - **`.python-version-note`**: records that laptop development happens under
   Python 3.14.3 in a venv, while the Jetson runs either Python 3.10
   (JetPack 6) or 3.12 (JetPack 7) system Python with no venv, and states the
@@ -2062,6 +2074,23 @@ precision `.gguf` file found (with size), lists what non-native files exist
 instead when no native file is found in a repo, and finally checks that the
 original source (non-GGUF) model repo exists as a fallback for local
 conversion via `llama.cpp`'s own `convert_hf_to_gguf.py --outtype bf16`.
+
+This script only *lists* candidates, it never downloads anything, which is
+easy to miss since there is no separate, dedicated download script
+anywhere in this repository. Once `config.MODEL_REPO`/`MODEL_FILE`/
+`MODEL_REVISION` are pinned (they already are, to `unsloth/Qwen3-1.7B-GGUF`,
+`Qwen3-1.7B-BF16.gguf`, and a specific revision hash), the actual fetch is
+a one-off `huggingface_hub.hf_hub_download(repo_id=config.MODEL_REPO,
+filename=config.MODEL_FILE, revision=config.MODEL_REVISION)` call, run
+directly on whichever machine needs the file at `config.resolve_model_path()`
+(`models/Qwen3-1.7B-BF16.gguf`), pinning the exact revision deliberately so
+a later re-run cannot silently fetch a newer upload of the same filename
+under a different `config_hash()`. In this project's actual bring-up this
+has been run directly on the Jetson (see `requirements.txt`'s
+`huggingface_hub` entry, added 2026-09-06, and `CHANGES.md` of the same
+date), since the Jetson has its own internet access and the model has to
+live there for `llama.cpp` regardless of where it was originally fetched
+from.
 
 #### `scripts/serve_dev.sh`
 
