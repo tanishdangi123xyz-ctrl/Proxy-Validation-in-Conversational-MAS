@@ -57,6 +57,7 @@ Item files are unchanged throughout and hash-verified on every load:
 | Hardware safety watchdog: stops a campaign before heat damages the board | working tree, uncommitted |
 | Kernel thermal trip points surfaced in check_device.py, an independent backstop | working tree, uncommitted |
 | requirements.txt gains huggingface_hub, README documents the actual model-download step | working tree, uncommitted (docs plus one dependency line) |
+| Thermal zone matching fixed for JetPack 6 (blocker: campaign could not start) | working tree, uncommitted |
 
 `8795032` is the commit that moved `config_hash` to `295678eeb8606cb8`. Anything
 recorded before it carries a different hash and must not be pooled with anything
@@ -178,6 +179,81 @@ INA226-based firmware and has not been updated for the new design; the
 100 mOhm shunt and the two divider resistors are not wired in yet, so
 current and bus voltage readings still cannot be confirmed sane against a
 multimeter.
+
+## 2026-09-06: Thermal zone matching fixed: the campaign could not have started on JetPack 6 at all
+
+A real blocker, found by review before the Jetson ran anything, not by the
+Jetson failing. Code plus 10 new self-test checks (`ZONES` section). No
+`config.py` value changed.
+
+**Why this was looked for.** With the physical Jetson now in hand but the
+power rig still unbuilt, the whole codebase was re-reviewed specifically
+for things that would fail on real hardware. Every hardware-facing path in
+this repository has only ever run against synthetic sysfs trees built by
+its own tests, and a synthetic tree proves the reading logic but says
+nothing about whether the names it looks for are the names a real Orin NX
+reports. That gap is exactly where this was hiding.
+
+**What was wrong.** NVIDIA renamed every Tegra234 thermal zone between
+JetPack 5 and JetPack 6. L4T r35 declares them `CPU-therm`, `GPU-therm`,
+`CV0-therm`, `SOC0-therm` ... `tj-therm` (NVIDIA's
+`tegra234-soc-thermal.dtsi`); L4T r36 declares the same nine zones
+`cpu-thermal`, `gpu-thermal`, `cv0-thermal`, `soc0-thermal` ...
+`tj-thermal` (`tegra234.dtsi`, also upstream in mainline Linux). A kernel
+thermal zone's reported `type` is its device-tree node name, so this is a
+real rename, not a formatting difference, and it is confirmed both from
+NVIDIA's own device trees for both releases and from real terminal output
+posted by an Orin Nano user on L4T 36.5 listing all nine `-thermal` zones.
+
+`jetson.py` matched the r35 spelling exactly (`SOC_ZONE_NAMES` held only
+`-therm` forms, and `_first_present` did a dict key lookup, which is exact
+equality). On JetPack 6 no SoC zone would match, `self.soc` would be
+`None`, and `JetsonDevice.__init__` would raise `ThermalUnavailable` on a
+completely healthy board. `run_campaign.py` catches that and exits with
+"A measurement run has to happen on the Jetson with the rig attached. Use
+--dry for a structural rehearsal on this machine.", which is about as
+misleading as an error can be when you are already sitting at the Jetson.
+Reproduced directly against a synthetic r36 zone tree before fixing: JP5
+tree constructs fine, JP6 tree raises.
+
+Worth noting how narrowly this was missed: `CPU_ZONE_NAMES` and
+`GPU_ZONE_NAMES` already listed *both* spellings (`cpu-therm`,
+`cpu-thermal`). Only the SoC list, the one the thermal gate actually
+depends on and the one whose absence is fatal, had just the old form.
+
+**What was fixed.** Zone identities are now held as stems
+(`SOC_ZONE_STEMS = ("tj", "soc0", "soc1", "soc2", "ao",
+"thermal-fan-est")`, `CPU_ZONE_STEMS`, `GPU_ZONE_STEMS`), and a new
+`zone_stem(name)` strips a trailing `-thermal` or `-therm` before
+matching, so r32, r35 and r36 all resolve through one rule that cannot
+break again on the next rename of that suffix. This is strictly more
+permissive than what it replaces: every name that matched before still
+matches. `discover_zones()` deliberately still keys on the full reported
+name, so bring-up listings show what the board actually called each zone;
+only role assignment uses stems. `ThermalUnavailable`'s message now prints
+each zone this board reported *with its computed stem* alongside the stems
+it wanted, because the one time this failure fired the answer was sitting
+in that list and the old message did not show it.
+
+**What was tested.** `test_zone_naming_across_jetpack` in
+`scripts/selftest.py` builds the real nine-zone r36 list, the real r35
+list, and a pre-Orin `thermal-fan-est` list from NVIDIA's device trees,
+and asserts each resolves an SoC zone (preferring `tj` on both modern
+releases) plus cpu and gpu; it also asserts a board with zones but none
+gateable still refuses, and that the refusal names what it saw. 306 checks
+pass, 0 failures.
+
+**What is still open.** This is verified against synthetic trees built
+from NVIDIA's published device trees, not yet against the actual unit;
+`scripts/check_device.py` on the real Jetson is what confirms it, and its
+zone listing is now the first thing to read there. The same class of
+mismatch has been checked for on the other two hardware-name paths and
+both come out clean: `ina3221.py` lowercases hwmon labels before matching
+and Orin NX's real `VDD_IN`/`VDD_CPU_GPU_CV`/`VDD_SOC` all hit existing
+aliases (verified against a synthetic Orin hwmon tree, including that the
+INA3221 driver's `in7_label`, "sum of shunt voltages", is correctly
+ignored rather than mistaken for a rail), and `gpio.py` matches nothing by
+name at all.
 
 ## 2026-09-06: requirements.txt gains huggingface_hub, README documents the actual model-download step
 

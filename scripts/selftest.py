@@ -1015,6 +1015,64 @@ def test_trip_points():
               found is False and "No 'critical' trip point found" in out.getvalue())
 
 
+def test_zone_naming_across_jetpack():
+    """Zone role resolution must survive NVIDIA's JetPack 5 -> 6 rename.
+
+    L4T r35 names the Tegra234 zones CPU-therm/SOC0-therm/tj-therm; L4T r36
+    renames the same nine zones cpu-thermal/soc0-thermal/tj-thermal. An
+    earlier version of this module matched the r35 spelling exactly, which
+    found no SoC zone at all on JetPack 6 and made JetsonDevice refuse to
+    construct on a healthy Orin NX. These are the real zone lists from
+    NVIDIA's own device trees for both releases, so a future rename or a
+    regression in zone_stem() fails here rather than on the bench.
+    """
+    r36 = [("cpu-thermal", 46000), ("gpu-thermal", -256000),
+           ("cv0-thermal", -256000), ("cv1-thermal", -256000),
+           ("cv2-thermal", -256000), ("soc0-thermal", 45000),
+           ("soc1-thermal", 44000), ("soc2-thermal", 45500),
+           ("tj-thermal", 47000)]
+    r35 = [("CPU-therm", 46000), ("GPU-therm", 45000), ("CV0-therm", 44000),
+           ("SOC0-therm", 45000), ("SOC1-therm", 44000), ("SOC2-therm", 45500),
+           ("tj-therm", 47000)]
+    legacy = [("CPU-therm", 46000), ("GPU-therm", 45000),
+              ("thermal-fan-est", 44000), ("PMIC-Die", 40000)]
+
+    check("zones", "both suffixes reduce to the same stem",
+          jetson.zone_stem("SOC0-therm") == jetson.zone_stem("soc0-thermal")
+          == "soc0", jetson.zone_stem("soc0-thermal"))
+    check("zones", "a name with no known suffix keeps its whole self",
+          jetson.zone_stem("thermal-fan-est") == "thermal-fan-est")
+
+    with tempfile.TemporaryDirectory() as tmp:
+        for label, zones, expect_soc in (
+                ("JetPack 6 / L4T r36", r36, "tj-thermal"),
+                ("JetPack 5 / L4T r35", r35, "tj-therm"),
+                ("pre-Orin fan-est", legacy, "thermal-fan-est")):
+            root = _fake_sysfs(Path(tmp) / label.replace("/", "_"), zones)
+            device = jetson.JetsonDevice(root)
+            soc_name = (device.soc.parent / "type").read_text(
+                encoding="utf-8").strip()
+            check("zones", "%s resolves an SoC zone" % label,
+                  soc_name == expect_soc,
+                  "picked %s, wanted %s" % (soc_name, expect_soc))
+            check("zones", "%s resolves cpu and gpu too" % label,
+                  device.cpu is not None and device.gpu is not None)
+
+        # A board with zones but none that could gate must still refuse, and
+        # the refusal has to name what it actually saw: the one time this
+        # fired for real, the answer was sitting in that list.
+        useless = _fake_sysfs(Path(tmp) / "useless", [("PMIC-Die", 40000)])
+        raised = None
+        try:
+            jetson.JetsonDevice(useless)
+        except jetson.ThermalUnavailable as exc:
+            raised = str(exc)
+        check("zones", "a board with no gateable zone still refuses",
+              raised is not None)
+        check("zones", "the refusal names the zones this board did report",
+              raised is not None and "pmic-die" in raised.lower(), raised or "")
+
+
 def test_jetson_sysfs():
     """JetsonDevice against a synthetic thermal tree.
 
@@ -1916,7 +1974,8 @@ def main():
                test_records, test_run_refuses_while_unvalidated,
                test_entry_point_guards, test_thermal_gate,
                test_thermal_safety_watchdog, test_thermal_emergency_stops_the_client,
-               test_trip_points, test_jetson_sysfs,
+               test_trip_points, test_zone_naming_across_jetpack,
+               test_jetson_sysfs,
                test_block_settle, test_gpio_abi, test_rail_discovery,
                test_energy_integration, test_meter_faults, test_sysfs_permissions,
                test_hw_status_column, test_trigger_pulse_join,

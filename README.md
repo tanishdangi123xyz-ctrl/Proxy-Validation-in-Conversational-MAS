@@ -1171,10 +1171,16 @@ paragraph and Section 5.6. Constants: `THERMAL_ROOT`/`DEVFREQ_ROOT`/
 `CPUFREQ_GLOB` are the relevant sysfs roots; `GPU_DEVFREQ_MARKERS`/
 `EMC_DEVFREQ_MARKERS` are name substrings used to find the right devfreq
 node by name rather than by index (device numbering is not stable across
-JetPack releases); `SOC_ZONE_NAMES`/`CPU_ZONE_NAMES`/`GPU_ZONE_NAMES` are
-the possible thermal-zone type names this board might report, again matched
-by name for the same reason; `NVPMODEL_STATUS`/`FAN_PWM_GLOB` locate the
-active power-mode file and fan PWM hwmon node.
+JetPack releases); `SOC_ZONE_STEMS`/`CPU_ZONE_STEMS`/`GPU_ZONE_STEMS` are
+the thermal-zone identities each role can resolve to, held as *stems*
+(`tj`, `soc0`, `cpu`, `gpu`, ...) rather than full names, with
+`ZONE_SUFFIXES` listing the suffixes stripped to get there; see the block
+comment on those constants, and `CHANGES.md`, 2026-09-06, for why this is
+not cosmetic (NVIDIA renamed every Tegra234 zone from `SOC0-therm` to
+`soc0-thermal` between JetPack 5 and 6, and matching the old spelling
+exactly made `JetsonDevice` refuse to construct on a healthy Orin NX
+running JetPack 6); `NVPMODEL_STATUS`/`FAN_PWM_GLOB` locate the active
+power-mode file and fan PWM hwmon node.
 
 `ThermalUnavailable` is raised when the thermal zones a gate depends on
 cannot be found. `discover_zones(root)` maps every lowercased thermal zone
@@ -1183,8 +1189,16 @@ type name the kernel exposes to the sysfs path holding its temperature.
 kernel reports millidegrees; reading the raw value as degrees would put
 every reading a factor of a thousand too low and hold the thermal gate open
 until it times out on every single call, a specific bug class this
-docstring calls out explicitly). `_first_present(zones, names)` returns the
-sysfs path for the first name in a priority list that is actually present.
+docstring calls out explicitly). `zone_stem(name)` reduces a reported zone
+type to the identity that survives NVIDIA's renames, stripping a trailing
+`-thermal` or `-therm` so that JetPack 5's `SOC0-therm` and JetPack 6's
+`soc0-thermal` both resolve to `soc0`; `discover_zones()` deliberately keeps
+the full reported name as its own key so a bring-up listing still shows
+exactly what this board called it, and the stem is used only for deciding
+which zone fills which role. `_first_present(zones, stems)` returns the
+sysfs path for the first stem in a priority list that is actually present,
+keeping the first match in `discover_zones()` order if two zones somehow
+reduce to the same stem.
 `wait_until_in_band(read_temp, target, tolerance, timeout_s, poll_s,
 monotonic=..., sleep=...)` is the actual thermal-gate polling loop described
 at length in Section 5.2/5.6 (why both directions matter, why a timeout is

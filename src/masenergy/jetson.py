@@ -29,10 +29,28 @@ GPU_DEVFREQ_MARKERS = ("gpu", "ga10b", "gv11b", "gp10b")
 EMC_DEVFREQ_MARKERS = ("emc",)
 EMC_FALLBACKS = (Path("/sys/kernel/debug/bpmp/debug/clk/emc/rate"),)
 
-SOC_ZONE_NAMES = ("tj-therm", "soc0-therm", "soc1-therm", "soc2-therm",
-                  "ao-therm", "thermal-fan-est")
-CPU_ZONE_NAMES = ("cpu-therm", "cpu-thermal")
-GPU_ZONE_NAMES = ("gpu-therm", "gpu-thermal")
+# Zone identities as STEMS, not full names, because the suffix moved.
+#
+# NVIDIA renamed every Tegra234 thermal zone between JetPack 5 and JetPack 6.
+# L4T r35 declares them as CPU-therm, GPU-therm, SOC0-therm ... tj-therm
+# (nvidia/soc/t23x/kernel-dts/tegra234-soc/tegra234-soc-thermal.dtsi); L4T r36
+# declares the same nine zones as cpu-thermal, gpu-thermal, soc0-thermal ...
+# tj-thermal (tegra234.dtsi, also upstream in mainline Linux). A kernel zone's
+# reported type is its device-tree node name, so this is not cosmetic: matching
+# the r35 spelling exactly, as an earlier version of this module did, finds no
+# SoC zone at all on JetPack 6 and JetsonDevice refuses to construct on a
+# perfectly healthy Orin NX.
+#
+# Matching on the stem covers r32 (-therm), r35 (-therm) and r36 (-thermal)
+# with one rule and cannot become wrong again on the next rename of that
+# suffix. thermal-fan-est carries no such suffix and is listed whole; it is a
+# Xavier/Nano-era zone that Orin does not appear to expose at all, kept only
+# because dropping a fallback that costs nothing buys nothing.
+SOC_ZONE_STEMS = ("tj", "soc0", "soc1", "soc2", "ao", "thermal-fan-est")
+CPU_ZONE_STEMS = ("cpu",)
+GPU_ZONE_STEMS = ("gpu",)
+
+ZONE_SUFFIXES = ("-thermal", "-therm")
 
 NVPMODEL_STATUS = Path("/var/lib/nvpmodel/status")
 FAN_PWM_GLOB = "/sys/class/hwmon/hwmon*/pwm1"
@@ -73,10 +91,36 @@ def read_zone_c(path):
     return int(Path(path).read_text(encoding="utf-8").strip()) / 1000.0
 
 
-def _first_present(zones, names):
-    for name in names:
-        if name in zones:
-            return zones[name]
+def zone_stem(name):
+    """Reduce a zone type to the identity that survives NVIDIA's renames.
+
+    'SOC0-therm' (JetPack 5) and 'soc0-thermal' (JetPack 6) are the same
+    physical sensor and both reduce to 'soc0'. discover_zones() deliberately
+    keeps the full reported name as its key, so a bring-up listing still
+    shows exactly what this board called it; the stem is only used for
+    deciding which zone fills which role.
+    """
+    lowered = name.strip().lower()
+    for suffix in ZONE_SUFFIXES:
+        if lowered.endswith(suffix):
+            return lowered[:-len(suffix)]
+    return lowered
+
+
+def _first_present(zones, stems):
+    """The path for the first stem present, in caller priority order.
+
+    Matched by stem rather than by exact name for the reason SOC_ZONE_STEMS
+    documents. Ties (two zones reducing to the same stem, which no Tegra234
+    device tree currently produces) keep the first in discover_zones()'
+    order rather than picking arbitrarily.
+    """
+    by_stem = {}
+    for name, path in zones.items():
+        by_stem.setdefault(zone_stem(name), path)
+    for stem in stems:
+        if stem in by_stem:
+            return by_stem[stem]
     return None
 
 
@@ -568,17 +612,24 @@ class JetsonDevice(Device):
 
     def __init__(self, root=THERMAL_ROOT):
         self.zones = discover_zones(root)
-        self.soc = _first_present(self.zones, SOC_ZONE_NAMES)
-        self.cpu = _first_present(self.zones, CPU_ZONE_NAMES)
-        self.gpu = _first_present(self.zones, GPU_ZONE_NAMES)
+        self.soc = _first_present(self.zones, SOC_ZONE_STEMS)
+        self.cpu = _first_present(self.zones, CPU_ZONE_STEMS)
+        self.gpu = _first_present(self.zones, GPU_ZONE_STEMS)
         if self.soc is None:
+            # Reports the stems looked for AND the exact names this board
+            # reported, with their stems, because the one time this fired in
+            # practice the cause was a rename this module had not caught up
+            # with, and a message that only says what it wanted is a message
+            # that hides the answer sitting right next to it.
+            seen = ", ".join(
+                "%s (stem %s)" % (name, zone_stem(name))
+                for name in sorted(self.zones)) or "no zones at all"
             raise ThermalUnavailable(
-                "No SoC thermal zone under %s. Looked for %s and found %s. "
-                "The thermal gate cannot run without it, and a campaign "
-                "without the gate is a campaign with an uncontrolled "
-                "confound."
-                % (root, ", ".join(SOC_ZONE_NAMES),
-                   ", ".join(sorted(self.zones)) or "no zones at all")
+                "No SoC thermal zone under %s. Looked for a zone whose name "
+                "reduces to one of %s, and found %s. The thermal gate cannot "
+                "run without it, and a campaign without the gate is a "
+                "campaign with an uncontrolled confound."
+                % (root, ", ".join(SOC_ZONE_STEMS), seen)
             )
         self._watchdog = None
 
