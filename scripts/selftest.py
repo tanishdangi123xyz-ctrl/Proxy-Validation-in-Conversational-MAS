@@ -696,10 +696,23 @@ def test_run_refuses_while_unvalidated():
 
 
 class FakeGatedDevice(client_module.Device):
-    """A Device that genuinely gates, standing in for JetsonDevice off-target."""
+    """A Device that genuinely gates, standing in for JetsonDevice off-target.
+
+    Also overrides the safety-watchdog hooks, trivially, so this still reads
+    as a fully implemented Device to is_stub()'s any-unoverridden-method
+    check: a fake meant to stand in for "a real device" that silently never
+    implemented hardware safety would be exactly the kind of half-real stub
+    is_stub() exists to catch, and this class should not be that.
+    """
 
     def wait_for_gate(self):
         return {"gate_wait_s": 7.5, "gate_timed_out": True}
+
+    def start_safety_watchdog(self):
+        pass
+
+    def safety_tripped(self):
+        return None
 
     def read_state(self):
         return dict(client_module.Device.read_state(self), temp_c_soc=44.0)
@@ -799,14 +812,207 @@ def test_thermal_gate():
           record.trigger_high_ts >= 0.0 and record.temp_c_soc_before == 44.0)
 
 
-def _fake_sysfs(root, zones):
-    """Build a thermal sysfs tree shaped like the kernel's."""
+def test_thermal_safety_watchdog():
+    """The hardware safety ceiling: a stricter, separate policy from the gate.
+
+    Exercised the same way wait_until_in_band is: the policy (_step) driven
+    directly against a scripted sequence, no real thread and no real elapsed
+    time, so the debounce and latching behaviour can be proven without
+    waiting on THERMAL_SAFETY_POLL_S in real time.
+    """
+    clock = FakeClock()
+    wd = jetson.ThermalWatchdog(
+        [("soc", lambda: 50.0)], limit_c=90.0, poll_s=1.0, consecutive=2,
+        clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    for _ in range(5):
+        wd._step(wd._poll_once(), out=out)
+    check("safety", "a device safely under the limit never trips",
+          wd.tripped() is None and out.getvalue() == "")
+
+    wd = jetson.ThermalWatchdog(
+        [("soc", lambda: 95.0)], limit_c=90.0, poll_s=1.0, consecutive=2,
+        clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    wd._step(wd._poll_once(), out=out)
+    check("safety", "one over-limit poll alone does not trip",
+          wd.tripped() is None and out.getvalue() == "",
+          "a single noisy reading should not lose a ten-day campaign")
+    wd._step(wd._poll_once(), out=out)
+    trip = wd.tripped()
+    check("safety", "a second consecutive over-limit poll trips",
+          trip is not None and trip["zone"] == "soc" and trip["temp_c"] == 95.0,
+          str(trip))
+    check("safety", "the trip message is loud and names the limit",
+          "THERMAL SAFETY WATCHDOG TRIPPED" in out.getvalue()
+          and "90.0" in out.getvalue() and "95.0" in out.getvalue())
+
+    box = {"n": 0}
+    def flaky():
+        box["n"] += 1
+        if box["n"] == 2:
+            raise OSError("simulated bad read")
+        return 95.0
+    wd = jetson.ThermalWatchdog(
+        [("soc", flaky)], limit_c=90.0, poll_s=1.0, consecutive=2,
+        clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    wd._step(wd._poll_once(), out=out)   # 95.0, streak 1
+    wd._step(wd._poll_once(), out=out)   # read fails, streak untouched
+    check("safety", "a failed read does not erase progress toward a trip",
+          wd.tripped() is None and wd._over_streak == 1, str(wd._over_streak))
+    wd._step(wd._poll_once(), out=out)   # 95.0 again, streak 2, trips
+    check("safety", "the streak resumes and trips once real readings return",
+          wd.tripped() is not None)
+
+    cooling = _ramp([95.0, 95.0, 85.0, 85.0])
+    wd = jetson.ThermalWatchdog(
+        [("soc", cooling)], limit_c=90.0, poll_s=1.0, consecutive=3,
+        clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    for _ in range(4):
+        wd._step(wd._poll_once(), out=out)
+    check("safety", "a device that cools before reaching consecutive never trips",
+          wd.tripped() is None, "streak should have reset when it dropped "
+          "under the limit before reaching THERMAL_SAFETY_CONSECUTIVE")
+
+    latch = jetson.ThermalWatchdog(
+        [("soc", _ramp([95.0, 95.0, 40.0, 40.0]))], limit_c=90.0, poll_s=1.0,
+        consecutive=2, clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    for _ in range(4):
+        latch._step(latch._poll_once(), out=out)
+    check("safety", "a trip latches, a later cool reading does not clear it",
+          latch.tripped() is not None,
+          "once tripped this device is not to be trusted again this run")
+
+    worst_of = jetson.ThermalWatchdog(
+        [("soc", lambda: 50.0), ("gpu", lambda: 92.0)],
+        limit_c=90.0, poll_s=1.0, consecutive=1,
+        clock=clock.monotonic, sleep=clock.sleep)
+    out = io.StringIO()
+    worst_of._step(worst_of._poll_once(), out=out)
+    trip = worst_of.tripped()
+    check("safety", "the watchdog trips on whichever zone is worst, not just soc",
+          trip is not None and trip["zone"] == "gpu", str(trip))
+
+    device = jetson.JetsonDevice.__new__(jetson.JetsonDevice)
+    device.soc = device.cpu = device.gpu = None
+    device._watchdog = None
+    check("safety", "safety_tripped() is None before the watchdog is started",
+          device.safety_tripped() is None)
+
+
+class FakeSafetyDevice(client_module.Device):
+    """A Device whose safety watchdog is already tripped, for call() tests."""
+
+    def __init__(self, trip):
+        self._trip = trip
+
+    def safety_tripped(self):
+        return self._trip
+
+    def read_state(self):
+        return dict(client_module.Device.read_state(self))
+
+
+def test_thermal_emergency_stops_the_client():
+    """A tripped watchdog refuses the call outright, unlike every other fault.
+
+    This is the one exception to client.py's own "faults are recorded, the
+    run continues" rule, so it is tested to a different standard: not just
+    that the fault is visible in the row, but that no row and no HTTP call
+    happen at all once the watchdog has fired.
+    """
+    trip = {"zone": "soc", "temp_c": 96.0, "limit_c": 90.0,
+            "since_monotonic": 0.0}
+    stub = StubClient([answered("42")])
+    stub.device = FakeSafetyDevice(trip)
+    raised = None
+    try:
+        stub.call("p", 0.7, 1, {"dataset": GSM_HARD})
+    except client_module.ThermalEmergency as exc:
+        raised = exc
+    check("safety", "a tripped watchdog raises ThermalEmergency, not a fault row",
+          raised is not None and "96.0" in str(raised), str(raised))
+    check("safety", "no HTTP call was issued once the watchdog had tripped",
+          not stub.prompts, "issued %d calls" % len(stub.prompts))
+
+    healthy = StubClient([answered("42")])
+    healthy.device = FakeSafetyDevice(None)
+    text, record = healthy.call("p", 0.7, 1, {"dataset": GSM_HARD})
+    check("safety", "a device that has not tripped calls normally",
+          len(healthy.prompts) == 1,
+          "safety_tripped() returning None must not block an ordinary call")
+
+
+def _fake_sysfs(root, zones, trip_points=None):
+    """Build a thermal sysfs tree shaped like the kernel's.
+
+    trip_points is optionally {zone_name: [(type, milli), ...]}, mirroring
+    the kernel's own trip_point_N_type/trip_point_N_temp files alongside a
+    zone's temp file, for exercising check_device.read_trip_points()
+    without a real Jetson.
+    """
+    trip_points = trip_points or {}
     for i, (name, milli) in enumerate(zones):
         zone = root / ("thermal_zone%d" % i)
         zone.mkdir(parents=True)
         (zone / "type").write_text("%s\n" % name, encoding="utf-8")
         (zone / "temp").write_text("%d\n" % milli, encoding="utf-8")
+        for n, (kind, trip_milli) in enumerate(trip_points.get(name, ())):
+            (zone / ("trip_point_%d_type" % n)).write_text(
+                "%s\n" % kind, encoding="utf-8")
+            (zone / ("trip_point_%d_temp" % n)).write_text(
+                "%d\n" % trip_milli, encoding="utf-8")
     return root
+
+
+def test_trip_points():
+    """The kernel's own thermal trip points, an independent backstop.
+
+    jetson.ThermalWatchdog depends on this process being alive to protect
+    the board. check_device.report_trip_points() exists to confirm,
+    separately, whether a kernel-enforced 'critical' trip point exists at
+    all, since that survives a dead process in a way nothing in this
+    codebase does. Exercised against a synthetic sysfs tree, the same
+    pattern test_jetson_sysfs already uses, since there is no real Jetson
+    available in this environment either.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        root = _fake_sysfs(
+            Path(tmp) / "with_trips", [("tj-therm", 46000), ("gpu-therm", 45000)],
+            trip_points={
+                "tj-therm": [("passive", 99000), ("critical", 105000)],
+                "gpu-therm": [("hot", 95000)],
+            })
+        zones = jetson.discover_zones(root)
+        points = check_device.read_trip_points(zones["tj-therm"])
+        check("trips", "trip points are read in order with correct units",
+              points == [("passive", 99.0), ("critical", 105.0)], str(points))
+        check("trips", "a zone with no critical trip still reports what it has",
+              check_device.read_trip_points(zones["gpu-therm"])
+              == [("hot", 95.0)])
+
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            found = check_device.report_trip_points(zones)
+        check("trips", "report_trip_points finds the critical trip point",
+              found is True)
+        check("trips", "the critical trip is flagged in the printed report",
+              "critical" in out.getvalue()
+              and "kernel-enforced shutdown" in out.getvalue())
+
+        no_trips_root = _fake_sysfs(
+            Path(tmp) / "no_trips", [("tj-therm", 46000)])
+        no_trip_zones = jetson.discover_zones(no_trips_root)
+        check("trips", "a zone with no trip_point files reports none",
+              check_device.read_trip_points(no_trip_zones["tj-therm"]) == [])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            found = check_device.report_trip_points(no_trip_zones)
+        check("trips", "report_trip_points correctly reports absence, not a crash",
+              found is False and "No 'critical' trip point found" in out.getvalue())
 
 
 def test_jetson_sysfs():
@@ -1708,7 +1914,9 @@ def main():
                test_seed_spacing, test_screen_campaign_agreement, test_topologies,
                test_payload_and_cache, test_debug_truncated_capture, test_band, test_serialisation,
                test_records, test_run_refuses_while_unvalidated,
-               test_entry_point_guards, test_thermal_gate, test_jetson_sysfs,
+               test_entry_point_guards, test_thermal_gate,
+               test_thermal_safety_watchdog, test_thermal_emergency_stops_the_client,
+               test_trip_points, test_jetson_sysfs,
                test_block_settle, test_gpio_abi, test_rail_discovery,
                test_energy_integration, test_meter_faults, test_sysfs_permissions,
                test_hw_status_column, test_trigger_pulse_join,

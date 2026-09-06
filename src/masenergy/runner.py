@@ -282,6 +282,15 @@ class Runner:
         from the real thing.
         """
         config.validate()
+        # Started here, once, before warm_up() and before the first block,
+        # rather than left to the per-call check in client.LlamaClient.call()
+        # to implicitly start it. The watchdog has to be live during
+        # warm_up(), settle() and measure_idle() too, none of which go
+        # through a fresh call() that would otherwise be the only place a
+        # lazily-started watchdog could begin, and a cooling failure during
+        # a five-minute settle() is exactly the kind of gap an
+        # only-checked-around-calls design would leave uncovered.
+        self.client.device.start_safety_watchdog()
         signal.signal(signal.SIGINT, _handle_sigint)
         blocks = ordered_blocks()
         per_block = config.N_ITEMS * len(config.SEEDS)

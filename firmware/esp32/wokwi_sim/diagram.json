@@ -1,0 +1,38 @@
+{
+  "version": 1,
+  "author": "masenergy project",
+  "editor": "wokwi",
+  "parts": [
+    { "type": "board-esp32-devkit-c-v4", "id": "esp", "top": 0, "left": 0, "attrs": {} },
+    { "type": "ina226-stub", "id": "ina", "top": -80, "left": 180, "attrs": {} },
+    {
+      "type": "wokwi-pushbutton",
+      "id": "trigger_btn",
+      "top": 100,
+      "left": 180,
+      "attrs": { "color": "red", "label": "Trigger (Jetson stand-in)", "key": "t" }
+    },
+    {
+      "type": "wokwi-resistor",
+      "id": "r_pulldown",
+      "top": 130,
+      "left": 140,
+      "attrs": { "value": "10000" }
+    }
+  ],
+  "connections": [
+    ["esp:TX", "$serialMonitor:RX", "", []],
+    ["esp:RX", "$serialMonitor:TX", "", []],
+
+    ["esp:3V3", "ina:VCC", "red", ["v20"]],
+    ["esp:GND.1", "ina:GND", "black", ["v20"]],
+    ["esp:D21", "ina:SDA", "green", ["v10"]],
+    ["esp:D22", "ina:SCL", "yellow", ["v10"]],
+
+    ["esp:D4", "trigger_btn:1.l", "orange", ["v10"]],
+    ["trigger_btn:2.l", "esp:3V3", "red", ["v-40", "h60"]],
+    ["esp:D4", "r_pulldown:1", "orange", ["v5", "h-40"]],
+    ["r_pulldown:2", "esp:GND.2", "black", ["v0"]]
+  ],
+  "dependencies": {}
+}

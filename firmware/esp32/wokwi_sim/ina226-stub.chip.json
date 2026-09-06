@@ -1,0 +1,31 @@
+{
+  "name": "INA226 Simulation Stub (masenergy)",
+  "author": "masenergy project",
+  "pins": ["VCC", "GND", "SDA", "SCL"],
+  "controls": [
+    {
+      "id": "busMillivolts",
+      "label": "Bus voltage (mV)",
+      "type": "range",
+      "min": 0,
+      "max": 20000,
+      "step": 10
+    },
+    {
+      "id": "shuntMicrovolts",
+      "label": "Shunt voltage (uV)",
+      "type": "range",
+      "min": -80000,
+      "max": 80000,
+      "step": 10
+    },
+    {
+      "id": "failReads",
+      "label": "Force I2C read failure",
+      "type": "range",
+      "min": 0,
+      "max": 1,
+      "step": 1
+    }
+  ]
+}

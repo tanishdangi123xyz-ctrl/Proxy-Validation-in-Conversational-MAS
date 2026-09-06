@@ -62,15 +62,46 @@ class Trigger:
 
 
 class Device:
-    """Thermal gate and device state.
+    """Thermal gate, device state, and the hardware safety watchdog.
 
     wait_for_gate blocks until the SoC is inside the target band, in both
     directions: too hot waits, too cold warms. A cold device is as
-    unrepresentative as a hot one.
+    unrepresentative as a hot one. That gate is about measurement
+    comparability and its only failure mode is gate_timed_out, a flagged row,
+    because faults never stop a run, per client.py's own module docstring.
+
+    start_safety_watchdog and safety_tripped are a different, deliberately
+    stricter mechanism layered on top: protecting the physical hardware
+    rather than the data. Unlike every other fault in this codebase, a
+    tripped safety watchdog is meant to stop the campaign outright, not get
+    flagged and continued past, because the thing at risk is the board
+    itself, not just this run's comparability. See ThermalEmergency and
+    LlamaClient.call() below, and jetson.ThermalWatchdog for the real
+    implementation; both are no-ops here so a laptop or --dry run is never
+    affected by a check that only means something on the real device.
     """
 
     def wait_for_gate(self):
         return {"gate_wait_s": 0.0, "gate_timed_out": False}
+
+    def start_safety_watchdog(self):
+        """Begin background monitoring, for the campaign's whole lifetime.
+
+        A no-op here. JetsonDevice overrides this to start
+        jetson.ThermalWatchdog; nothing on a laptop or under --dry ever has
+        anything to protect.
+        """
+        pass
+
+    def safety_tripped(self):
+        """None while safe, or a dict describing the trip once it fires.
+
+        Checked once per call, before any hardware is touched (see
+        LlamaClient.call()). Returning None unconditionally here is correct
+        for the Null path: there is no real hardware to endanger, so there is
+        nothing to trip.
+        """
+        return None
 
     def read_state(self):
         return {
@@ -143,6 +174,22 @@ class NullEnergyMeter(EnergyMeter):
 
 
 class ServerError(RuntimeError):
+    pass
+
+
+class ThermalEmergency(RuntimeError):
+    """Raised when the hardware safety watchdog has tripped.
+
+    Deliberately not a fault that gets recorded and continued past.
+    Everything else in this module's fault handling exists to keep a
+    campaign running through a bad sensor or a dead thread, because losing
+    ten days of data over a glitch is expensive and the row is already
+    flagged. This is the one exception to that policy: the thing being
+    protected here is the board itself, and continuing to issue calls to a
+    device already over its safety ceiling is not a defensible trade against
+    losing a run. Runner.run() and scripts/run_campaign.py let this
+    propagate rather than catching and continuing, on purpose.
+    """
     pass
 
 
@@ -271,6 +318,14 @@ class LlamaClient:
         Returns (text, record).
         """
         with _CALL_LOCK:
+            trip = self.device.safety_tripped()
+            if trip is not None:
+                raise ThermalEmergency(
+                    "Hardware safety watchdog tripped, refusing to start a "
+                    "new call: %s. This call was never issued; nothing after "
+                    "the trip was measured. See jetson.ThermalWatchdog and "
+                    "config.THERMAL_SAFETY_LIMIT_C." % trip)
+
             gate = self.device.wait_for_gate()
             before = self.device.read_state()
 

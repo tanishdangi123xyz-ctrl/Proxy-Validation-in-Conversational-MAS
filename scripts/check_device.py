@@ -15,6 +15,15 @@ laptop: the GPIO chip and line for the trigger, and the label this board spells
 its INA3221 rails with. Those are device-tree properties, so config ships with
 them unset and validate() refuses a run until this script has been read.
 
+Also confirms, by default and unconditionally (see report_trip_points()),
+whether this board exposes a kernel-enforced "critical" thermal trip point,
+the one hardware/kernel backstop that survives a dead Python process, an
+unstarted jetson.ThermalWatchdog, or a bug in this codebase's own software
+safety mechanism. config.THERMAL_SAFETY_LIMIT_C protects the board only as
+long as this process is alive and correctly wired in; this check is how
+that assumption gets replaced with an actual confirmed fact about this
+specific unit rather than an assumption about Jetsons in general.
+
     python3 scripts/check_device.py                 what the device reports
     python3 scripts/check_device.py --sample 120    watch it drift under load
     python3 scripts/check_device.py --gate 50       exercise the real gate
@@ -62,6 +71,82 @@ def report_zones(root):
         except (OSError, ValueError) as exc:
             print("  %-24s unreadable: %s" % (name, exc))
     return zones
+
+
+def read_trip_points(zone_temp_path):
+    """Kernel-defined trip points for one zone, as [(type, celsius), ...].
+
+    Independent of anything this codebase configures. The Linux thermal
+    sysfs ABI (Documentation/ABI/testing/sysfs-class-thermal) exposes each
+    zone's own device-tree-defined trip points as trip_point_N_type ("
+    critical", "hot", "passive", "active", ...) and trip_point_N_temp
+    (millidegrees) files alongside the zone's own temp file. "critical" is
+    the one that matters most here: crossing it makes the kernel itself
+    shut the board down, with no dependency on this process, Python, or
+    jetson.ThermalWatchdog being alive to react. That is a backstop this
+    codebase cannot take credit for and does not implement, it already
+    exists in the kernel/device-tree on a real Jetson, and this function
+    exists only to make it visible and confirmed rather than assumed.
+    """
+    zone_dir = Path(zone_temp_path).parent
+    points = []
+    try:
+        type_paths = sorted(zone_dir.glob("trip_point_*_type"))
+    except OSError:
+        return points
+    for type_path in type_paths:
+        temp_path = zone_dir / type_path.name.replace("_type", "_temp")
+        try:
+            kind = type_path.read_text(encoding="utf-8").strip()
+            milli = int(temp_path.read_text(encoding="utf-8").strip())
+        except (OSError, ValueError):
+            continue
+        points.append((kind, milli / 1000.0))
+    return points
+
+
+def report_trip_points(zones):
+    """The kernel's own thermal trip points, an independent backstop.
+
+    jetson.ThermalWatchdog (config.THERMAL_SAFETY_LIMIT_C, 90 C by default)
+    is a software mechanism: it depends on this Python process being alive
+    and the campaign's own code path being the one running. A "critical"
+    trip point here is enforced by the kernel itself regardless of what
+    userspace is doing, and is the backstop that exists even if the
+    watchdog thread died, the script crashed, or a future run forgot to
+    call start_safety_watchdog() at all. This has never been confirmed on
+    a real Jetson from this repository; it is reported here rather than
+    assumed, the same discipline every other bring-up check in this file
+    applies.
+    """
+    print("\nKERNEL THERMAL TRIP POINTS (independent of THERMAL_SAFETY_LIMIT_C)")
+    any_critical = False
+    for name, path in sorted(zones.items()):
+        points = read_trip_points(path)
+        if not points:
+            print("  %-24s no trip points exposed under %s"
+                  % (name, Path(path).parent))
+            continue
+        for kind, celsius in points:
+            flag = "  <-- kernel-enforced shutdown" if kind == "critical" else ""
+            print("  %-24s %-10s %6.1f C%s" % (name, kind, celsius, flag))
+            if kind == "critical":
+                any_critical = True
+    print()
+    if any_critical:
+        print("  At least one 'critical' trip point is exposed. NVIDIA's own")
+        print("  Thermal Design Guide documents 105 C as the Orin SoC hardware")
+        print("  shutdown temperature; confirm the number(s) above are in that")
+        print("  neighbourhood, not something unexpectedly low or high, and")
+        print("  keep THERMAL_SAFETY_LIMIT_C (90 C) well under whatever this")
+        print("  reports on this specific unit, not just under NVIDIA's spec.")
+    else:
+        print("  No 'critical' trip point found on any zone. Do not assume one")
+        print("  exists but is merely unreadable: confirm with the vendor/L4T")
+        print("  release notes for this specific carrier board and JetPack")
+        print("  version before treating THERMAL_SAFETY_LIMIT_C as the only")
+        print("  thing standing between a runaway load and hardware damage.")
+    return any_critical
 
 
 def report_selection(device):
@@ -250,6 +335,7 @@ def main(argv=None):
 
     root = Path(a.root)
     zones = report_zones(root)
+    has_critical_trip = report_trip_points(zones)
     try:
         device = jetson.JetsonDevice(root)
     except jetson.ThermalUnavailable as exc:
@@ -270,6 +356,12 @@ def main(argv=None):
     print("  %d zones, SoC gating on %s." % (len(zones), device.soc))
     print("  Run --gpio --rails --freq to fill in TRIGGER_CHIP, TRIGGER_LINE")
     print("  and any rail alias this board spells differently.")
+    if not has_critical_trip:
+        print("\n  WARNING: no kernel 'critical' thermal trip point was found")
+        print("  above. jetson.ThermalWatchdog is a software mechanism only;")
+        print("  do not treat it as sufficient on its own for a multi-day")
+        print("  unattended campaign without understanding why this board")
+        print("  has no visible kernel-level backstop.")
     return 0
 
 

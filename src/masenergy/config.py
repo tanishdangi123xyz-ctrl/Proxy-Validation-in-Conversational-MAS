@@ -94,9 +94,55 @@ THERMAL_POLL_S = 2.0
 BLOCK_SETTLE_S = 300.0
 SETTLE_POLL_S = 1.0
 
+# Hardware self-preservation, not a research parameter. THERMAL_TARGET_C
+# above is a choice about measurement comparability and is deliberately left
+# unset until bring-up characterises this specific device; this is a
+# hard-coded ceiling that exists purely to stop a run before it damages the
+# board, so unlike THERMAL_TARGET_C it ships with a real default rather than
+# None, and jetson.ThermalWatchdog uses it from the first campaign, even one
+# that never got around to setting THERMAL_TARGET_C.
+#
+# NVIDIA's own Jetson Orin NX / Orin Nano Series Thermal Design Guide
+# (TDG-11127-001) specifies 99 C as the SoC's maximum specified operating
+# temperature (T.SoC), above which DVFS throttling engages, and 105 C as the
+# hardware shutdown temperature, above which the board halts itself
+# regardless of what software does. THERMAL_SAFETY_LIMIT_C is set well under
+# both: comfortably below 99 C so it fires before the hardware even starts
+# throttling itself (a throttling board is a board already being damaged by
+# heat, not a board caught in time), and with a full margin under 105 C so
+# software has time to actually stop issuing calls before a hardware
+# shutdown would. 90 C is engineering judgement given that margin, not an
+# NVIDIA-specified number; a normal, healthy, adequately cooled Orin NX
+# under sustained full-GPU load is expected to run well under it.
+THERMAL_SAFETY_LIMIT_C = 90.0
+# How often jetson.ThermalWatchdog samples the SoC (and CPU/GPU zones, where
+# present) in the background, for the whole lifetime of a campaign, not just
+# during a call. Independent of THERMAL_POLL_S, which only matters while
+# wait_until_in_band() is actively blocking between calls; this runs
+# continuously, including during warm-up, settle waits, and idle sampling,
+# since a genuine cooling failure does not politely wait for the next call.
+THERMAL_SAFETY_POLL_S = 1.0
+# Consecutive over-limit polls required before the watchdog trips, not one.
+# A single reading is one bad sysfs read away from a false trip that throws
+# away a ten-day campaign over a glitch; two consecutive polls, a couple of
+# seconds apart at THERMAL_SAFETY_POLL_S, is enough to distinguish a real
+# thermal excursion from sensor noise without meaningfully delaying a real
+# one, since a device genuinely over the ceiling stays over it on the very
+# next poll.
+THERMAL_SAFETY_CONSECUTIVE = 2
+
 IDLE_WINDOW_S = 10.0
 IDLE_EVERY_N_CALLS = 20
 
+# Left unset for the same reason TRIGGER_CHIP/TRIGGER_LINE are: mode
+# numbering is a property of how this specific unit was flashed (standard
+# vs the JetPack 6.2+ "Super" config), not something choosable from a
+# laptop, and a guessed value could silently apply the wrong mode instead
+# of failing loudly. Research is done and a recommendation exists (mode 0,
+# MAXN, or MAXN_SUPER if this unit turns out to be Super-flashed; see
+# CHANGES.md, 2026-09-06, "NVPMODEL_MODE research"), but it still needs
+# confirming against this unit's actual `nvpmodel -q --verbose` output
+# before this can be set.
 NVPMODEL_MODE = None
 FAN_PWM = 255
 

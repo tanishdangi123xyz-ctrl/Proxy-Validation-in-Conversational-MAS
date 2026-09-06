@@ -15,7 +15,9 @@ Standard library only, Python 3.10 compatible.
 """
 
 import argparse
+import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,7 +29,8 @@ from masenergy.runner import Runner
 
 STUB_METHODS = {
     client.Trigger: ("high", "low", "status"),
-    client.Device: ("wait_for_gate", "read_state"),
+    client.Device: ("wait_for_gate", "read_state",
+                    "start_safety_watchdog", "safety_tripped"),
     client.EnergyMeter: ("start", "stop", "measure_idle"),
 }
 
@@ -202,10 +205,44 @@ def main(argv=None):
     banner(runner, a.dry, a.host, a.port)
 
     try:
-        executed = runner.run()
-    finally:
-        for instrument in (trigger, meter, device):
-            instrument.close()
+        try:
+            executed = runner.run()
+        finally:
+            for instrument in (trigger, meter, device):
+                instrument.close()
+    except client.ThermalEmergency as exc:
+        # Deliberately its own branch, not folded into a generic except
+        # below client.py's module docstring's own rule that faults are
+        # recorded and a run continues past them. This is the one condition
+        # meant to stop a run outright, so it gets its own loud message, its
+        # own durable on-disk record (terminal scrollback is not enough for
+        # an operator who was not watching an unattended multi-day
+        # campaign), and its own exit code, distinct from every other exit
+        # path in this script, so a launcher or monitoring script watching
+        # the process exit status can tell "the campaign finished or was
+        # interrupted" (0) apart from "the campaign stopped itself to
+        # protect the hardware, do not just restart it" (3).
+        marker = runner.out / "THERMAL_EMERGENCY.json"
+        try:
+            marker.write_text(json.dumps({
+                "run_id": run_id,
+                "stopped_utc": datetime.now(timezone.utc).isoformat(),
+                "message": str(exc),
+            }, indent=2), encoding="utf-8")
+        except OSError:
+            pass  # the stderr message below is the fallback record
+        # A plain string SystemExit always exits 1 in Python regardless of
+        # its message, which would make this indistinguishable from every
+        # other guard failure in this script; the message and the exit code
+        # are set separately here so the distinct-exit-code claim above is
+        # actually true, not just asserted in a comment.
+        sys.stderr.write(
+            "\n%s\n\nWrote %s.\nDo not resume this run until the cooling "
+            "problem is understood and fixed; resuming\nwith --resume %s "
+            "picks the campaign back up exactly where this left off,\nand "
+            "will run straight back into the same limit if nothing about "
+            "the physical\nsetup has changed.\n" % (exc, marker, run_id))
+        raise SystemExit(3) from None
 
     print("\n%d tasks executed. Resume with:\n  python3 scripts/run_campaign.py "
           "--resume %s%s" % (executed, run_id, " --dry" if a.dry else ""))

@@ -48,12 +48,825 @@ Item files are unchanged throughout and hash-verified on every load:
 | `debate_agent.txt` rewrite (evidence-grounded reconsideration, targeting the `hotpotqa` change-rate floor) | working tree, uncommitted |
 | Mac-side memory investigation (frozen config's real footprint, ~4.2 GB) | working tree, uncommitted (docs only) |
 | `dry_run.py` planner_worker plan-fallback check, stale cross-reference fixes | working tree, uncommitted |
+| `firmware/esp32/`, `host/capture.py`, `host/join.py`: host capture written, checklist item 12 | working tree, uncommitted |
+| Real ESP32 bring-up: smoke test confirmed on hardware, sketch-folder path fix | working tree, uncommitted |
+| Real firmware flashed, frame stream and trigger_pulse_n join key confirmed on hardware | working tree, uncommitted |
+| INA226 dropped for the ESP32's own ADC: firmware, host decode, and materials list rewritten | working tree, uncommitted |
+| Real hardware bring-up of the ADC-based firmware: calibration confirmed, trigger join key confirmed, achieved rate measured | working tree, uncommitted (docs only, firmware unchanged) |
+| NVPMODEL_MODE research: a recommendation ready, still not set | working tree, uncommitted (docs only, config.py unchanged) |
+| Hardware safety watchdog: stops a campaign before heat damages the board | working tree, uncommitted |
+| Kernel thermal trip points surfaced in check_device.py, an independent backstop | working tree, uncommitted |
 
 `8795032` is the commit that moved `config_hash` to `295678eeb8606cb8`. Anything
 recorded before it carries a different hash and must not be pooled with anything
 recorded after.
 
 ---
+
+## 2026-09-06: INA226 dropped for the ESP32's own ADC: firmware, host decode, and materials list rewritten
+
+A design change to the external power rig, made before the INA226 sensor
+itself was ever wired in, so no working measurement path is broken by
+this, only the not-yet-validated one from the two entries below. No
+`config.py` or prompt change; `config_hash` and `prompts_hash` are
+unaffected.
+
+**Why.** Two independent problems pointed at the same fix. First, Tanish
+wants a higher sample rate than the INA226's I2C link can sustain,
+sampling over I2C imposes a real speed ceiling that reading the ESP32's
+own onboard ADC pins directly does not share. Second, sourcing a suitable
+INA226 breakout board in India had become a genuine blocker across
+several rounds of research this session: every hobbyist listing found
+(Robu, Robocraze, FlyRobo) was either out of stock or shipped with an
+undocumented fixed onboard shunt rather than the external, known-value
+shunt this project's arithmetic depends on. Reading the ESP32's own ADC
+pins removes both problems at once: no I2C round trip, and no INA226 to
+source at all.
+
+**What changed, and what it trades away.** The shunt moved from the
+positive 19V line (high side, safe for the INA226's true differential
+inputs) to the ground return path (low side), because a bare
+single-ended ADC pin cannot read a signal riding on top of 19V the way a
+true differential chip can. Bus voltage is now read through a 100 kOhm /
+18 kOhm resistor divider (ratio about 0.1525) on a second ADC pin, rather
+than by the INA226's own internal bus-voltage sensing. Both pins are on
+ADC1 (GPIO32 and GPIO33), deliberately not ADC2, since ADC2 shares
+hardware with WiFi even though this design never turns WiFi on. The
+current channel uses 0 dB attenuation (about 0-1.1V full scale) for the
+best resolution on its small expected signal; the bus channel uses 11 dB
+(about 0-3.3V) for headroom. This trades away accuracy the INA226 does not
+have to compromise on: per Espressif's own developer documentation, the
+ESP32's ADC has a documented calibrated error of "generally less than 30
+mV," with real nonlinearity worse near the range extremes, an error
+source that has no equivalent in a dedicated sensor chip. Two mechanisms
+compensate for it, each with an explicitly documented limit rather than a
+glossed-over one: 16x oversampling (`OVERSAMPLE_K`) reduces the *random*
+component of that error (shrinks roughly as 1/sqrt(N)) at the direct cost
+of dividing the achievable sample rate by 16, buying roughly two effective
+bits of resolution on the current channel; and a startup zero-offset
+calibration (`CAL_SAMPLES = 256` readings averaged at boot, before the
+Jetson's 19V supply is assumed to be live) corrects the *systematic*
+component, which oversampling alone cannot touch. The calibration step has
+a real, undocumentable-in-hardware limitation: it requires the ESP32 (USB
+powered) to boot and finish calibrating strictly before the Jetson's 19V
+supply is switched on, and there is no fault bit that can detect a
+violation of that order, since from the firmware's own point of view a
+late 19V supply and a correctly-zeroed idle reading look identical. This
+is stated plainly in the firmware's own header rather than hidden behind
+an unlabeled assumption.
+
+One side effect worth calling out on its own: this also downgrades the
+shunt from a 20 mOhm 4-terminal Kelvin-tapped part (needed under the
+INA226 design, whose true differential inputs could isolate wiring
+resistance) to a 100 mOhm standard 2-terminal through-hole resistor.
+Under the bare-ADC design the accuracy benefit of a Kelvin part is small
+relative to the ADC's own roughly 30 mV error budget, so the far
+easier-to-source part is now sufficient, which incidentally removes what
+had been the single hardest-to-source item on the materials list.
+
+**What was rewritten.** `firmware/esp32/masenergy_sampler/masenergy_sampler.ino`:
+completely rewritten, no `Wire.h`/I2C anywhere in it now. New constants
+(`PIN_ADC_CURRENT`, `PIN_ADC_BUS`, `R_SHUNT_OHMS = 0.100`,
+`R_DIVIDER_TOP_OHMS`/`R_DIVIDER_BOTTOM_OHMS`, `CURRENT_ATTEN`/`BUS_ATTEN`,
+`OVERSAMPLE_K = 16`, `CAL_SAMPLES = 256`) and a new fault vocabulary
+(`FAULT_OVERRUN`, `FAULT_CAL_NOT_RUN`, `FAULT_CURRENT_ADC_RANGE`,
+`FAULT_BUS_ADC_RANGE`) that completely replaces the old I2C-era one
+(`i2c_shunt_read_failed` and friends no longer exist anywhere in this
+codebase). `host/capture.py`: rewritten to decode the new wire format,
+with `frame_to_row()`'s arithmetic changed from "trust the chip's own
+calibration register" to "divide out the oversample factor, convert via
+each channel's own ADC LSB size, then apply the shunt resistance and
+divider ratio directly," which makes `--shunt-ohms` arithmetically
+load-bearing on the command line for the first time (previously it was
+recorded for provenance only, since the INA226 applied the shunt value
+itself). `host/live_monitor.py`: gained a `--shunt-ohms` argument for the
+same reason, and had its startup and rate-readout messages rewritten to
+stop naming a "~1.5 kHz target" and I2C-era fault names that no longer
+exist. `host/join.py`: essentially untouched, a one-line docstring fix
+only, since it never depended on sensor internals, only on
+`capture.py`'s already-decoded columns. `power_rig_materials_list.md`:
+the INA226 breakout board line item removed entirely, the shunt spec
+changed to 100 mOhm/2-terminal, a new bus-voltage-divider section added,
+and the "one blocking item" reduced to just the shunt itself.
+
+**A real bug this rewrite's own testing caught, before any hardware was
+touched.** The wire format was first specified with both ADC-sum fields
+as signed 16-bit integers. While hand-computing a realistic test case for
+`frame_to_row()`, a normal ~19V bus reading's offset-corrected,
+16x-oversampled sum came out to roughly 57545, out of a possible 65520
+maximum, which overflows a signed 16-bit field's 32767 maximum under
+completely ordinary, fault-free operation, not as some rare edge case.
+This was caught by a synthetic-frame test built specifically to exercise
+`frame_to_row()`'s decode math against realistic numbers, not by
+inspection, and fixed by making `bus_adc_sum` unsigned (`uint16_t` in the
+firmware's `send_frame()`, format code `H` in `capture.py`'s `_STRUCT`)
+while deliberately leaving `current_adc_sum` signed, since near-idle
+current legitimately produces small negative offset-corrected values a
+`uint16` field cannot represent. Both files' comments now call out this
+asymmetry explicitly, so a future reader does not "fix" it back into a
+bug. Five synthetic-frame test cases (clean frame, `FAULT_CAL_NOT_RUN`,
+`FAULT_CURRENT_ADC_RANGE` alone, a small negative current sum, and
+`bus_adc_sum` at the `uint16` maximum) all pass against the corrected
+code.
+
+**What is still open.** At the time this entry was written, none of this
+new firmware had been compiled, flashed, or run against real hardware; see
+the entry directly below for that result, recorded the same day once it
+was available. `firmware/esp32/wokwi_sim/` still simulates the retired
+INA226-based firmware and has not been updated for the new design; the
+100 mOhm shunt and the two divider resistors are not wired in yet, so
+current and bus voltage readings still cannot be confirmed sane against a
+multimeter.
+
+## 2026-09-06: Kernel thermal trip points surfaced in check_device.py, an independent backstop behind the software watchdog
+
+Code and a new self-test section (`TRIPS`, 6 checks, all passing). No
+`config.py` value changed.
+
+**Why.** Asked directly whether the software watchdog added earlier today
+is enough on its own to keep the Jetson safe, the honest answer is no, and
+this entry is the concrete follow-up rather than just a caveat in
+conversation. `jetson.ThermalWatchdog` depends on this Python process
+being alive, this codebase's own wiring being correct, and nobody having
+skipped `start_safety_watchdog()`; it has no answer for a kernel hang, a
+crashed process, or a future bug in `runner.py` that forgets to call it.
+What does not share that dependency is the kernel's own thermal
+management: Linux's generic thermal sysfs ABI lets a device tree define
+trip points per zone, and a `"critical"` one makes the kernel shut the
+board down itself, with no dependency on userspace at all. That backstop,
+if this board has one, already exists and needed no code to create it,
+only a way to confirm it is actually present on this specific unit rather
+than assumed to exist because "Jetsons generally have one."
+
+**What was added.** `scripts/check_device.py` gains
+`read_trip_points(zone_temp_path)`, which reads the standard
+`trip_point_N_type`/`trip_point_N_temp` sysfs files the kernel exposes
+alongside a zone's own `temp` file (see
+`Documentation/ABI/testing/sysfs-class-thermal` in the kernel source for
+the ABI this follows), and `report_trip_points(zones)`, which prints every
+trip point on every zone `jetson.discover_zones()` found, flags any
+`"critical"` one prominently, and returns whether one was found at all.
+This runs unconditionally as part of the default `check_device.py`
+invocation, not behind a flag, on the same reasoning `THERMAL_SAFETY_LIMIT_C`
+itself ships with a real default rather than `None`: a safety-relevant
+check that only runs when someone remembers to ask for it is not one
+worth relying on. The script's closing summary now prints an explicit
+warning if no `"critical"` trip point was found on any zone, rather than
+silently saying nothing.
+
+**What this does and does not establish.** This has not been run against
+a real Jetson from this repository; it is new tooling, exercised only
+against a synthetic sysfs tree in `selftest.py` (`test_trip_points`,
+mirroring the existing `test_jetson_sysfs` pattern: build a fake
+`trip_point_*_type`/`trip_point_*_temp` tree, confirm the reader parses it
+correctly in the right units and order, confirm the report correctly
+finds and flags a `"critical"` trip point, and confirms it does not crash
+and correctly reports absence when a zone has none). Whether this
+project's actual Jetson Orin NX carrier board exposes a `"critical"` trip
+point, and at what temperature, is unknown until `check_device.py` is
+actually run on it; this is exactly the kind of fact this script exists
+to replace assumption with, the same way it already does for
+`TRIGGER_CHIP`/`TRIGGER_LINE`/rail labels.
+
+**What is still open, stated plainly rather than implied.** A kernel
+`"critical"` trip point, if present, protects against thermal damage only;
+it says nothing about an electrical fault on the external power rig (a
+short, a bad connection, an overcurrent event), which is outside what
+either this trip point or `jetson.ThermalWatchdog` can catch before
+damage occurs, and outside what software on the Jetson can protect
+against at all. Real electrical protection (a fuse or resettable fuse in
+line on the rig's 19V path, or an externally triggerable power cutoff
+independent of whether the Jetson's own OS is responsive) is a physical
+build decision, not a software one, and remains the operator's own
+responsibility. This entry closes the "is the software watchdog alone
+survivable" gap as far as software can; it does not claim to close the
+whole question of hardware safety, and the README's Section 5.5 says so
+explicitly rather than leaving the software watchdog looking like a
+complete answer.
+
+## 2026-09-06: Hardware safety watchdog: stops a campaign before heat damages the board
+
+Code and a new, growing self-test section (`SAFETY`, 13 checks, all
+passing). No `config.py` value already in `REQUIRED_BEFORE_RUN` changed;
+two new frozen constants were added, with real defaults, not `None`.
+
+**Why.** Every fault mechanism this codebase had before today shares one
+deliberate policy, stated plainly in `client.py`'s own module docstring: "A
+hardware read that fails is recorded and the run continues." That policy
+is correct for data quality, a flagged row is cheap and a ten-day campaign
+restarted from scratch is not, but it has no answer for a genuinely
+different question: what happens if the device itself is not just
+producing bad data, but is actively at risk of physical damage from
+running hot for too long. Nothing in the pipeline before this entry would
+have noticed that distinction. `jetson.wait_until_in_band()`'s thermal gate
+holds a call until the SoC returns to `THERMAL_TARGET_C`, but its only
+failure mode is `gate_timed_out`, a flagged row, and the call proceeds
+regardless; a device stuck at a dangerous temperature for the timeout
+duration, over and over, block after block, would generate nothing but
+`gate_timed_out` rows and keep being hammered with calls the whole time.
+That gap is what this entry closes, prompted directly by wanting a fail
+mechanism that stops the code before it fries the Jetson, not just one
+that notices afterward in the data.
+
+**What was added.** A new, deliberately stricter mechanism, layered on top
+of the existing fault-tolerant one rather than replacing it, because the
+two are protecting different things (data quality versus the board
+itself) and conflating them would either make every ordinary sensor
+glitch fatal or make a real thermal emergency survivable, both wrong.
+
+`config.py` gains three constants, `THERMAL_SAFETY_LIMIT_C = 90.0`,
+`THERMAL_SAFETY_POLL_S = 1.0`, `THERMAL_SAFETY_CONSECUTIVE = 2`. Unlike
+`THERMAL_TARGET_C`, which stays `None` until bring-up characterises this
+specific device (see Section 7 of the README), these ship with real
+defaults, because a safety mechanism that requires setup before it
+protects anything is not a safety mechanism a researcher can rely on
+having remembered to configure. The 90 C default is reasoned from NVIDIA's
+own Jetson Orin NX / Orin Nano Series Thermal Design Guide
+(TDG-11127-001), which specifies 99 C as the SoC's maximum specified
+operating temperature (above which DVFS throttling begins) and 105 C as
+the hardware shutdown temperature (above which the board halts itself
+regardless of software); 90 C sits with a real margin under both, chosen
+so software acts before the hardware even starts throttling itself, not
+after, and with enough room under the 105 C hard shutdown for software to
+actually stop issuing calls before hardware intervention would. That
+specific number is engineering judgement given NVIDIA's own two
+documented figures, not itself an NVIDIA-specified ceiling, and is
+recorded as such rather than blurred into the sourced numbers around it.
+
+`jetson.py` gains `ThermalWatchdog`, a background daemon thread structured
+like `ina3221.RailSampler` (a `threading.Event` for clean shutdown, an
+injectable clock and sleep for testing without real elapsed time), but
+solving a different problem: it polls every named thermal zone a given
+Jetson exposes (SoC always, CPU and GPU where present) once per
+`THERMAL_SAFETY_POLL_S`, for the whole lifetime of a campaign rather than
+only around calls, and trips on whichever zone is worst. Tripping requires
+`THERMAL_SAFETY_CONSECUTIVE` consecutive over-limit polls, not one, so a
+single noisy sysfs read cannot end a ten-day campaign by itself, and a
+failed read neither counts toward nor resets that streak, so sensor
+flakiness during a real excursion cannot mask it either. Once tripped, the
+watchdog latches: a later reading coming back under the limit does not
+un-trip it, because the device is not to be trusted again for the rest of
+that run. A trip writes an unmissable, multi-line message directly to
+stderr, deliberately not folded into the existing `HW_FAULT_ALERT_EVERY`
+batching, since this is the one condition meant to be impossible for an
+operator to miss even if they only glance at the terminal once.
+
+`client.py` gains `ThermalEmergency(RuntimeError)`, and `Device` gains two
+new interface methods, `start_safety_watchdog()` and `safety_tripped()`,
+both no-ops on the base class (and therefore on `NullDevice`, so a laptop
+or a `--dry` rehearsal is never affected). `LlamaClient.call()` checks
+`safety_tripped()` first thing inside `_CALL_LOCK`, before
+`wait_for_gate()`, before the trigger goes high, before anything is
+measured: if the watchdog has tripped, it raises `ThermalEmergency`
+immediately and the call is never issued at all, no HTTP request, no
+trigger pulse, no row. This is the one exception to the "faults are
+recorded, the run continues" policy quoted above, on purpose, and the
+module docstring and the exception's own docstring both say so explicitly
+so a future reader does not "fix" it back to the general pattern.
+
+`jetson.JetsonDevice` implements the real version: `start_safety_watchdog()`
+builds a `ThermalWatchdog` over whichever zones this specific board
+actually exposes and starts it; `safety_tripped()` reports the watchdog's
+state; `close()` stops the watchdog thread alongside everything else a run
+closes. `runner.Runner.run()` calls `start_safety_watchdog()` once, before
+`warm_up()` and before the first block, specifically so the watchdog is
+live during `settle()` waits and idle sampling too, not only around calls,
+since a real cooling failure does not politely wait for the next call to
+begin.
+
+`scripts/run_campaign.py` catches `ThermalEmergency` in its own branch,
+distinct from every other exit path in the script: it writes a durable
+`THERMAL_EMERGENCY.json` marker into the run's output directory (terminal
+scrollback is not a reliable record for an operator who was not watching
+an unattended multi-day campaign), prints an explicit message saying not
+to blindly `--resume` until the cooling problem is understood, and exits
+with status 3, distinct from every other guard failure in the script, so
+a launcher or monitoring wrapper can tell "the campaign finished or was
+interrupted" apart from "the campaign stopped itself to protect the
+hardware." `STUB_METHODS[client.Device]` gained the two new method names,
+so `is_stub()` would catch a `Device` subclass that implements everything
+else but silently never wires in real safety monitoring, the same
+protection it already gives every other interface method.
+
+**What was tested, and how.** 13 new checks in a new `SAFETY` section of
+`scripts/selftest.py`, using the same style `test_thermal_gate` already
+established for `wait_until_in_band()`: the trip policy is exercised
+directly against scripted temperature sequences and an injected clock,
+with no real thread and no real elapsed time, via a `_step()` method
+factored out of the watchdog's threaded loop specifically so the policy
+is testable this way. Covered: a device safely under the limit never
+trips; one over-limit poll alone does not trip; a second consecutive
+over-limit poll does; the trip message names the real zone and
+temperature; a failed read neither erases progress toward a trip nor
+fabricates it; a device that cools back under the limit before reaching
+the consecutive count never trips at all; a trip latches and a later cool
+reading does not clear it; the watchdog trips on whichever zone (soc, cpu,
+gpu) is worst; `safety_tripped()` returns `None`, not an error, before the
+watchdog has ever been started. A second new test,
+`test_thermal_emergency_stops_the_client`, drives `LlamaClient.call()`
+itself through the existing `StubClient` harness with a
+watchdog-already-tripped fake `Device`, and confirms both that
+`ThermalEmergency` is raised (not merely a flagged row) and that zero HTTP
+calls were issued, the load-bearing claim this whole mechanism rests on.
+An existing fake, `FakeGatedDevice` in `test_entry_point_guards`, needed a
+matching update, trivial overrides of the two new methods, since without
+them it correctly started reading as a still-partially-stub `Device`
+under the same any-unoverridden-method rule `is_stub()` already applied
+to every other interface method; this is `is_stub()` working as intended,
+not a regression, and is recorded here so a future reader sees why that
+fake changed in the same commit as an unrelated-looking feature.
+
+**What is still open.** Nothing in this mechanism has run against a real
+thermal excursion on real hardware, only against the synthetic sequences
+above; the two-poll debounce, the 90 C default, and the roughly one-second
+reaction latency are all reasoned from NVIDIA's documented numbers and
+this project's own judgement, not yet validated against a real Orin NX
+actually being pushed toward its thermal ceiling. A call already in
+flight when the watchdog trips is allowed to finish rather than being
+interrupted mid-HTTP-request; this project's `urllib`-based client has no
+cheap way to cancel a request in progress, so the honest limit is that the
+watchdog stops the *next* call, not necessarily the one already running,
+bounded in the worst case by `SERVER_TIMEOUT_S`. Only temperature is
+monitored; a genuine overcurrent or undervoltage event on the power rails
+is not, though nothing about this design would prevent extending
+`ThermalWatchdog`'s zones list, or adding a sibling watchdog over
+`ina3221`'s rails, later if that turns out to matter.
+
+## 2026-09-06: NVPMODEL_MODE research: a recommendation ready, still not set
+
+Research and documentation only, no code change. `config.NVPMODEL_MODE`
+remains `None`, deliberately; see **What was not done, and why** below.
+
+**Why.** With the ESP32 side of the power rig bring-up on hold until the
+shunt and divider parts and the right power adapters arrive, and the
+physical Jetson not yet in hand either, this was a piece of Jetson
+bring-up prep that does not need either: `NVPMODEL_MODE` is one of the
+seven parameters `config.REQUIRED_BEFORE_RUN` blocks a real run on, and
+picking it well needs research regardless of when the device shows up, so
+doing that research now rather than after the Jetson arrives shortens the
+critical path once it does.
+
+**What was researched.** The Jetson Orin NX 8GB's available `nvpmodel`
+power modes, sourced from NVIDIA's own Jetson Linux Developer Guide pages
+for both L4T r35.4.1 (JetPack 5) and r36.5 (JetPack 6), NVIDIA's own
+technical blog post announcing JetPack 6.2's "Super Mode," and a Jetson
+developer forum thread with a direct NVIDIA engineer reply, cross-checked
+against each other rather than taken from any single source:
+
+| Mode ID | Name | Power budget | CPU cores | Max CPU freq | Max GPU freq | DLA |
+|---|---|---|---|---|---|---|
+| 0 | MAXN | unconstrained | 6 | 1984 MHz | 765 MHz | 1 core |
+| 1 | 10W | 10 W | 4 | 1190.4 MHz | 612 MHz | disabled |
+| 2 | 15W (factory default) | 15 W | 4 | 1420.8 MHz | 612 MHz | disabled |
+| 3 | 20W | 20 W | 6 | 1497.6 MHz | 408 MHz | enabled, reduced |
+
+This is the standard-flash table (JetPack 5.x and 6.0 to 6.1). A separate
+"Super" configuration exists from JetPack 6.2 onward, adding a mode 4
+(40W) and raising MAXN's GPU ceiling to 1173 MHz as `MAXN_SUPER`, but a
+board is only in this configuration if it was flashed with the specific
+Super device-tree config, not merely by installing JetPack 6.2 or later on
+top of an existing standard-flash image. A forum thread with a direct
+NVIDIA engineer reply confirms this distinction concretely: a user on an
+Orin NX 8GB running JetPack 6.2's L4T version was still capped at 765 MHz
+GPU with no `MAXN_SUPER` available, because the board itself had not been
+reflashed with the Super config. Full source list is in the research
+notes; the two load-bearing ones are NVIDIA's own Jetson Linux Developer
+Guide (`docs.nvidia.com/jetson/archives/...PlatformPowerAndPerformance...`,
+both the r35.4.1 and r36.5 versions) and the JetPack 6.2 Super Mode blog
+post (`developer.nvidia.com/blog/nvidia-jetpack-6-2-brings-super-mode...`).
+
+**The recommendation.** Mode 0, MAXN (or `MAXN_SUPER` if this project's
+specific unit turns out to be flashed with the Super config), not one of
+the wattage-capped modes. The reasoning is specific to this project's own
+design, not a generic "always use MAXN" claim: `config.LLAMA_FLAGS`
+already commits to `--n-gpu-layers 999`, full-GPU inference, so measuring
+under a capped mode that throttles CPU core count and GPU clock would
+measure an artificially hobbled system rather than the real cost of the
+workload this study cares about. The usual argument against MAXN for
+careful benchmarking, that its lack of a power ceiling invites
+thermally-driven clock variability over a long campaign, does not apply
+here the way it would to a project without one of this project's own
+mechanisms: `jetson.py`'s thermal gate already exists specifically to hold
+every block to a comparable thermal state before it starts, so the
+variable MAXN would otherwise leave uncontrolled is a variable this
+project already controls for by a different, independent mechanism.
+`jetson_clocks` should be applied after the `nvpmodel` mode is set and the
+board rebooted, not before, since `jetson_clocks` locks clocks to the
+ceiling the currently active mode permits rather than overriding it; this
+ordering is consistent, repeated community and NVIDIA-forum practice but
+was not found stated on a single official documentation page, so it is
+recorded here as high-confidence operational guidance, not a doc-cited
+fact, and is flagged as such rather than blurred into the sourced claims
+above it.
+
+**What was not done, and why.** `config.NVPMODEL_MODE` was deliberately
+left `None` rather than set to `0` here. Mode numbering is not stable
+across JetPack versions or flash configurations (mode 4 does not exist at
+all in the standard config but is 40W in the Super config), and whether
+this project's specific physical unit is standard-flashed or
+Super-flashed is not something research from a laptop can determine, only
+`sudo nvpmodel -q --verbose` run directly on the device can. Setting a
+guessed value here would repeat exactly the mistake `TRIGGER_CHIP` and
+`TRIGGER_LINE` are deliberately left `None` to avoid, per
+`scripts/check_device.py`'s own docstring: a device-tree or
+flash-configuration property cannot be chosen from a laptop, and a guessed
+value can silently apply the wrong thing rather than failing loudly. The
+concrete next step, once the Jetson is in hand, is to run `nvpmodel -q
+--verbose`, confirm whether MAXN or MAXN_SUPER is present, set
+`config.NVPMODEL_MODE` to whichever mode ID that turns out to be on the
+real unit, and record that confirmation here.
+
+## 2026-09-06: Real hardware bring-up of the ADC-based firmware: calibration confirmed, trigger join key confirmed, achieved rate measured
+
+A real-hardware result for the redesign above, gathered the same day it
+was written, on the same physical ESP32-D0WD-V3 board the retired
+INA226-based firmware was validated on back on 2026-09-02. No `config.py`
+or prompt change.
+
+**Why.** The rewrite above had not touched real hardware yet. Before
+sourcing or wiring the shunt and divider resistors, the two things worth
+confirming first are the two the design depends on structurally: does the
+startup zero-offset calibration actually complete and clear its fault bit
+in practice, not just in the firmware's own reasoning, and does the
+`trigger_pulse_n` join-key logic still work correctly now that the
+firmware driving it has been completely rewritten around a different
+sensor. Everything else (real current and voltage accuracy) cannot be
+checked at all until the shunt and divider are physically wired in, so
+there was no reason to wait for those parts to arrive before checking what
+could be checked now.
+
+**What happened.** `arduino-cli compile --fqbn esp32:esp32:esp32
+firmware/esp32/masenergy_sampler` succeeded cleanly: 279,444 bytes program
+storage (21%), 22,228 bytes dynamic memory (6%), both comfortably within
+budget and, notably, smaller than the retired INA226-based build (294,084
+bytes program storage), consistent with dropping the `Wire.h`/I2C library
+entirely. `arduino-cli upload -p /dev/cu.usbserial-0001 --fqbn
+esp32:esp32:esp32 firmware/esp32/masenergy_sampler` flashed without error
+against the same board and port used throughout this project's hardware
+work. `pyserial` needed a fresh `pip3 install pyserial` in the venv this
+was run from (`realsense-venv`), a one-time environment gap, not a code
+issue; once installed, `host/live_monitor.py --port
+/dev/cu.usbserial-0001` connected and streamed frames immediately.
+
+Two things were confirmed directly from the monitor's live output, with
+nothing wired to the ADC pins yet: `startup_calibration_not_run` was set
+immediately after boot and cleared on its own shortly after, exactly as
+the firmware's STARTUP ZERO-OFFSET CALIBRATION section says it should
+(`CAL_SETTLE_MS` delay, then `CAL_SAMPLES` readings averaged per channel);
+and jumpering `3V3` to `D4` (`PIN_TRIGGER`, GPIO4) by hand produced a clean
+`trig` transition from `0` to `1` in the monitor output, with
+`trigger_pulse_n` incrementing correctly, exactly reproducing the
+2026-09-02 result but now against the fully rewritten ADC-based firmware
+rather than the retired INA226-based one. This is the single most
+load-bearing piece of the whole external-rig design (it is the only thing
+that lets a Jetson row and an external sample be matched without ever
+comparing clocks), and it survived the rewrite intact, which is expected
+since the trigger-handling code path was not touched by the sensor
+redesign, but is worth having confirmed rather than assumed.
+
+The rolling rate readout settled at **755.2 frames/sec**, the first real
+number this design has produced for its own achievable sample rate (the
+retired INA226 design's own real-hardware figure, 1499 frames/sec, is not
+comparable, since the two designs' bottlenecks are different: I2C round
+trip time there, versus `OVERSAMPLE_K = 16` raw ADC reads summed per
+reported frame here). Roughly half of the old design's rate is in the
+right direction to sanity-check against the oversampling cost: 16 raw ADC
+reads per reported sample is a real, deliberate tax on rate in exchange for
+resolution, exactly as the firmware's own OVERSAMPLING header comment
+describes, though no attempt has yet been made to separate how much of the
+achieved rate is set by that oversample loop specifically versus other
+per-loop overhead (the `analogRead()` call itself, the serial write); that
+breakdown is not needed for this project's purposes but would be the next
+question if the rate ever needed to be pushed higher.
+
+**What is still open.** The shunt (100 mOhm) and the bus voltage divider
+(100 kOhm/18 kOhm) are not wired in yet, so `current_adc_range` and
+`bus_adc_range` have not been meaningfully exercised (the ADC pins are
+currently floating, which can trip either fault on essentially arbitrary
+noise, not on anything representative of real use) and no real current or
+voltage figure has been checked against a multimeter. Once those parts are
+in hand and wired per the firmware's own header comment, the next
+concrete step is confirming sane, non-faulted readings there, followed by
+bringing the Jetson itself into the loop for a full end-to-end join-key
+test against a real HTTP call rather than a hand-toggled jumper.
+
+## 2026-09-02: Real firmware flashed, frame stream and trigger_pulse_n join key both confirmed on hardware
+
+A real-hardware result, checklist item 12's core claim now verified rather
+than only reasoned through. No `config.py` or prompt change.
+
+**Why.** With the sketch-folder path bug fixed (see the entry below) and
+the toolchain proven by the smoke test, the next step was to flash the
+actual `masenergy_sampler.ino` and check the two things the whole external
+rig depends on: does the frame stream actually run at the designed rate
+with correct fault reporting, and does the `trigger_pulse_n` counting
+logic, the join key that lets Jetson rows and external samples be matched
+without ever comparing clocks, actually work against a real electrical
+edge rather than only a hand-traced reasoning argument or a synthetic test
+frame.
+
+**What happened.** `arduino-cli compile`/`upload` against the corrected
+`firmware/esp32/masenergy_sampler/` path succeeded cleanly (294084 bytes
+program storage, 23524 bytes dynamic memory, both well within budget).
+`host/live_monitor.py --port /dev/cu.usbserial-0001 --every 750` was then
+run against the live board. Over 444,006 frames the rate held at a steady
+1499 frames/sec against a target of ~1500, with zero resync events and the
+fault byte reading exactly as predicted
+(`calibration_unconfirmed|i2c_bus_read_failed|i2c_shunt_read_failed` on
+every frame, correct since the INA226 is not yet wired in).
+
+The join-key test: with the monitor running, `3V3` was bridged to `D4`
+(GPIO4) by hand for roughly a second. The output showed `trig` flip from
+`0` to `1` and `pulse_n` increment exactly once, from 2030 to 2031 (the
+counter had already been driven up by earlier bounce during debugging,
+which is fine, since what matters is that it increments correctly and
+monotonically, not that it started at zero), holding steady at both values
+for as long as the wire stayed connected, with no double-count and no
+missed edge. This is the first time this logic has been checked against
+real silicon and real electrical noise rather than a hand-traced call
+sequence or a synthetic 20-byte frame, and it held.
+
+**Why the wire went to `3V3`, not `GND`.** `PIN_TRIGGER` is configured
+`pinMode(PIN_TRIGGER, INPUT)` with no internal pull, deliberately, since
+in real deployment the Jetson always actively drives the line and a pull
+would be redundant. That also means the pin floats with nothing connected,
+so an early attempt to detect a transition failed silently: touching the
+wrong two header pins (a labeling mixup, not a code or wiring defect, the
+board's own silkscreen is small and easy to miscount along) meant no edge
+was ever produced, and the floating pin's read stayed low by chance rather
+than by design. Once the correct two pins were identified from a photo of
+the board and `3V3` was driven onto `D4` directly, the edge registered
+immediately and cleanly.
+
+**What is still open.** The INA226 is not yet wired in, so shunt and bus
+voltage reads still fault on every frame; that is the only thing left
+standing between this instrument and a real measurement campaign.
+`host/capture.py`'s CSV-writing path itself has still only been exercised
+against synthetic frames, not the real board, though `live_monitor.py`
+reuses its `FrameReader` and `frame_to_row` directly, so the same decode
+logic has now been exercised against real bytes even though the CSV
+output path specifically has not.
+
+## 2026-09-02: Real ESP32 bring-up: smoke test confirmed on hardware, sketch-folder path fix
+
+Code and a real-hardware result, not a `config.py` or prompt change.
+
+**Why.** With `arduino-cli`, the ESP32 core, and the toolchain smoke test
+all in place from the entry below, Tanish moved on to actually flashing
+and running `firmware/esp32/smoke_test/smoke_test.ino` on his physical
+board, then attempted to compile the real `masenergy_sampler.ino`
+immediately after.
+
+**What happened.** The smoke test passed cleanly: the board
+(ESP32-D0WD-V3, revision v3.1, port `/dev/cu.usbserial-0001`) booted,
+printed `smoke_test: boot ok`, and the serial monitor showed
+`smoke_test: alive, tick N` incrementing steadily and without a single
+skipped or repeated value across a run from tick 93 through tick 172
+before it was interrupted. That confirms the ESP32 core install, the
+board, the USB cable, and the `arduino-cli compile`/`upload`/`monitor`
+path are all genuinely working on this machine, not merely reasoned about.
+
+Compiling `masenergy_sampler.ino` right after surfaced a real bug:
+`arduino-cli compile --fqbn esp32:esp32:esp32 firmware/esp32` failed with
+`Can't open sketch: main file missing from sketch:
+/Users/tanish/Desktop/Conversational MAS for Jetson/firmware/esp32/esp32.ino`.
+`arduino-cli` requires a sketch's main `.ino` file to share its
+containing folder's name; `masenergy_sampler.ino` had been sitting
+directly in `firmware/esp32/`, so the tool looked for `esp32.ino` and
+found nothing. `smoke_test.ino` never hit this because it was already
+placed inside its own matching `smoke_test/` subfolder.
+
+**What was fixed.** `masenergy_sampler.ino` moved from `firmware/esp32/`
+to `firmware/esp32/masenergy_sampler/masenergy_sampler.ino`, the same
+layout `smoke_test.ino` already used. Its header comment gained a short
+BUILD block with the correct `compile`/`upload` command lines and a note
+explaining why the file lives in a subfolder, matching the convention
+already present in `smoke_test.ino`'s own header. No line of the
+firmware's actual logic changed, only its location and its own
+documentation of that location.
+
+**What is still open.** The real firmware has not yet been flashed to
+the physical board; the frame stream has not yet been watched live via
+`host/live_monitor.py`; the `trigger_pulse_n` join-key logic, the single
+most load-bearing piece of the whole external-rig design, has not yet
+been validated against a real toggled GPIO edge. These are the immediate
+next steps, using the now-corrected sketch path.
+
+## 2026-09-02: Bring-up tools for a real ESP32: a toolchain smoke test and a readable live frame monitor
+
+Code, not evidence. No `config.py` or prompt file changed.
+
+**Why.** Tanish got a physical ESP32 connected to his Mac partway through
+this session, ahead of the Wokwi simulation work below actually being run.
+That changes what is worth doing next: real hardware in hand can validate
+things the simulation cannot (real USB timing, a real cable, a real
+`arduino-cli` toolchain), and two gaps became visible immediately when
+bring-up started. First, `arduino-cli core install esp32:esp32` failed on
+a `raw.githubusercontent.com` timeout on the first attempt, a network
+issue on Tanish's end, not a code problem, but it meant there was, until
+now, no way to tell "the ESP32 core is not installed yet" apart from "the
+real firmware has a bug" the first time `masenergy_sampler.ino` gets
+flashed. Second, `host/capture.py` is deliberately silent and
+CSV-only, correct for a ten-day unattended campaign, but useless for a
+first look at a freshly flashed board: there is no CSV yet, and raw
+20-byte frames in a terminal are unreadable.
+
+**What was added.** `firmware/esp32/smoke_test/smoke_test.ino`: five lines
+of logic, blinks the onboard LED and prints an incrementing counter over
+serial. Deliberately has nothing to do with the measurement rig and
+imports nothing from it. The point is narrow: flash this first, and a
+pass proves the toolchain, the board, the cable and the port are all
+working, so a subsequent problem when flashing the real firmware is
+attributable to that file, not to the environment around it.
+`host/live_monitor.py`: imports `FrameReader` and `frame_to_row` directly
+from `host/capture.py` (not a reimplementation, so it can never silently
+drift from what a real capture would record) and prints one readable line
+per frame, trigger level, `trigger_pulse_n`, decoded fault names, plus a
+rolling frames-per-second readout, and explicitly flags the moment
+`trigger_pulse_n` changes value. `--every N` thins what gets printed
+without thinning what gets decoded, since at ~1.5 kHz printing every frame
+is unreadable. Writes nothing to disk, `host/capture.py` remains the tool
+for an actual recorded run.
+
+**What this unblocks right now, with only a bare ESP32 (no INA226, no
+shunt, no Jetson).** In order: confirm the toolchain and board work at all
+(`smoke_test.ino`); confirm `masenergy_sampler.ino` compiles clean against
+the real ESP32 Arduino core, which by itself checks every register
+constant, struct pack, and API call in the file for the first time outside
+of being reasoned about by eye; confirm it boots and streams frames at a
+steady rate with the I2C bus unpopulated, which should show
+`i2c_shunt_read_failed|i2c_bus_read_failed|calibration_unconfirmed` on
+every frame, itself a real, meaningful pass since it proves the sample
+loop, fault-bit logic, and serial framing all work under a known failure
+condition; and confirm `trigger_pulse_n` increments correctly when the
+trigger pin (GPIO 4) is jumpered to 3.3V and back to ground by hand, the
+single most important piece of logic in the whole rig, since it is what
+the eventual Jetson-to-external join depends on entirely. None of this
+needs the INA226, the shunt, or the Jetson.
+
+**What is and is not verified.** `live_monitor.py`'s pulse-transition
+detection and fault decoding were checked with the same class of
+hand-built synthetic frames used to verify `host/capture.py` itself,
+confirmed to agree with `frame_to_row`'s own output for identical bytes.
+Neither file has been run against a real serial port yet, that is
+literally the next step once `arduino-cli core install esp32:esp32`
+succeeds.
+
+**Files touched.** `firmware/esp32/smoke_test/smoke_test.ino` (new),
+`host/live_monitor.py` (new), `README.md` (Section 3's file tree, new
+subsections under Section 8.6), this file.
+
+## 2026-09-02: Wokwi browser simulation of the ESP32 firmware, so it can be exercised before real hardware arrives
+
+Code, not evidence, same as the entry below it. No `config.py` or prompt
+file changed.
+
+**Why.** The prior entry below left `masenergy_sampler.ino` reasoned about
+by hand but never actually compiled or run anywhere, since this
+development environment has no Arduino toolchain and no network path to
+install one. Wokwi (a browser-based ESP32 simulator) can compile and run
+the real `.ino` file against simulated peripherals, closing that gap
+without waiting for a physical board.
+
+**What was added.** `firmware/esp32/wokwi_sim/`: `ina226-stub.chip.c` and
+`ina226-stub.chip.json`, a custom Wokwi chip implementing exactly the four
+INA226 registers the firmware touches (`REG_CONFIG`'s soft reset, a plain
+config write, `REG_CALIBRATION` write-then-readback, repeated
+`REG_SHUNT_VOLTAGE`/`REG_BUS_VOLTAGE` reads), deliberately no more than
+that; `diagram.json`, wiring an ESP32 DevKit to the stub over I2C and a
+pushbutton (with a pull-down resistor, simulation-only scaffolding, see
+README Section 8.6 for why) standing in for the Jetson's trigger line;
+`README.md`, exact setup steps and an explicit statement of what this
+simulation does and does not prove.
+
+**The one platform detail that could not be confirmed from documentation
+alone.** `ina226_read16()` in the firmware issues a register-address write
+with no STOP (`Wire.endTransmission(false)`) followed by a read
+(`Wire.requestFrom()`), a repeated START. Wokwi's public chip-API
+documentation does not say whether that arrives at a custom chip as one
+held I2C transaction or as a fresh `connect()` callback with `read=true`.
+Rather than guess and risk a stub that only works under one assumption,
+`on_i2c_connect()` was written to relatch the read value from whatever
+register address is currently selected every time it is called with
+`read=true`, which is correct under either interpretation. Flagged here
+rather than silently assumed, since it is exactly the kind of platform
+detail that would otherwise cause a confusing, hard-to-diagnose failure
+the first time this is actually run.
+
+**What is and is not verified.** The I2C register sequence was traced by
+hand, call by call, against `masenergy_sampler.ino`'s actual
+`ina226_write16`/`ina226_read16`/`ina226_read16u` calls and confirmed to
+match the stub's handling at every step (soft reset clears the stub's
+calibration register, calibration write is read back correctly, shunt/bus
+reads derive from the stub's own voltage sliders using the same LSB
+constants `host/capture.py` uses). The trigger pin's simulation wiring
+was checked against the firmware's actual `pinMode(PIN_TRIGGER, INPUT)`
+call (no internal pull resistor), and the pull-down resistor was added to
+the diagram specifically because a bare pushbutton-to-3V3 with nothing
+else connected would leave the simulated pin floating when unpressed, an
+artifact of simulating a line the real Jetson always actively drives,
+not a firmware bug. None of this has actually been run in Wokwi itself:
+this environment's network egress cannot reach wokwi.com, so the
+simulation project has been reasoned through and hand-traced but not
+executed. Actually running it (paste into a new browser project, per
+`wokwi_sim/README.md`) is the immediate next step, and is what would
+turn "reasoned correct" into "observed correct".
+
+**Files touched.** `firmware/esp32/wokwi_sim/diagram.json` (new),
+`firmware/esp32/wokwi_sim/ina226-stub.chip.c` (new),
+`firmware/esp32/wokwi_sim/ina226-stub.chip.json` (new),
+`firmware/esp32/wokwi_sim/README.md` (new), `README.md` (Section 3's file
+tree, Section 8.6's new `wokwi_sim/` subsection), this file.
+
+## 2026-09-02: Host capture written: ESP32 firmware, laptop capture, and the join script, checklist item 12 starts here
+
+Code, not evidence. No `config.py` or prompt file changed, so `config_hash`
+and `prompts_hash` both hold at `74b943de71fe5fd8` / `61e6c78bad256b91`;
+this entry exists purely to log new files and their reasoning, per this
+project's own rule that every change gets an entry here.
+
+**Why now.** `host/` did not exist and `firmware/esp32/` held only a
+`.gitkeep`, both flagged in this README as a real gap rather than
+something merely unstarted. Checklist item 12 (Host capture) was
+confirmed not to be gated on having the physical Jetson: it only needs an
+ESP32, an INA226, and a serial port, none of which the Jetson bring-up
+items block on. With the shunt-resistor sourcing question open (see the
+2026-09-02 shunt-existence research, conversational, not logged here since
+it produced no repo change) and the Jetson itself not yet in hand, this
+was genuinely actionable work rather than something waiting on either.
+
+**What was written.** Three files, described in full in README Section
+8.6: `firmware/esp32/masenergy_sampler.ino` (ESP32 firmware, reads the
+external INA226 continuously at roughly 1.5 kHz, watches the Jetson's
+trigger line, streams one 20-byte binary frame per sample over USB
+serial), `host/capture.py` (laptop-side decoder, turns that stream into an
+append-only CSV, resynchronises after any corruption, reconnects
+automatically on a dropped USB connection), and `host/join.py` (the script
+`records.py`'s own docstring has referred to since before it existed:
+matches Jetson rows to external samples by `trigger_pulse_n` and fills
+`energy_j_external`).
+
+**The one design decision that mattered most.** The join key is the pulse
+ordinal, never a timestamp, because the ESP32's clock and the Jetson's
+clock are never synchronised (this is explicit in both `jetson.py`'s
+`Trigger.status()` docstring and `client.py`'s `Trigger` class docstring,
+which this firmware and these scripts were written to match exactly, not
+to reinvent). The firmware increments its own `pulse_n` on a debounced
+rising edge using the identical "increment before reporting" convention
+`jetson.py`'s `Trigger.high()` uses, so the Nth rising edge carries the
+same ordinal on both sides regardless of what either side's own clock
+says, and regardless of a missed edge on either side (a missed edge leaves
+a gap in the sequence, per the existing `jetson.py` docstring's own
+reasoning, rather than silently shifting every later pulse by one).
+
+**NaN discipline extended to the external rig.** `records.py`'s rule
+("zero joules and zero degrees are both physically meaningful values, so
+writing one for a read that did not happen makes a broken instrument
+indistinguishable from a quiet device") is applied identically here: a
+faulted INA226 read is tagged with a fault bit in the firmware's frame and
+decoded to `NaN`, never zero, in `host/capture.py`; `host/join.py` extends
+this further with an explicit `join_status` column (`ok`,
+`contains_faults`, `span_mismatch`, `insufficient_samples`, `no_samples`)
+so a dropped pulse or a bad sample is visible as a labelled state rather
+than inferred from a suspiciously-NaN or suspiciously-zero energy figure.
+
+**Continuous sampling, matching `ina3221.py`'s own reasoning.** The ESP32
+sends a frame on every sample regardless of the trigger's current level,
+never gating capture to only run while the trigger is high. `ina3221.py`'s
+docstring gives the reason for the onboard sampler running the same way
+(a sampler that only ran during calls would bias every energy figure by
+excluding the instrument's own idle draw from the baseline subtracted from
+them), and the same reasoning was carried over rather than re-derived from
+scratch, since it is the same shunt and the same measured domain.
+
+**What is and is not verified.** All three files were checked by hand
+against the INA226 datasheet's register map and calibration formula, and
+against `jetson.py`'s/`client.py`'s existing `Trigger` contract, since
+there is no Arduino toolchain and no serial hardware in the environment
+this was written in. `host/capture.py` and `host/join.py` are Python and
+were exercised with real assertions against synthetic data: `capture.py`
+against hand-built 20-byte frames covering a clean sample, a faulted
+sample, sync-loss recovery from injected garbage bytes, a frame split
+across two reads, sequence-gap detection, and append/fsync/schema-mismatch
+behaviour in the CSV writer, all passing; `join.py` against synthetic
+Jetson and external CSVs covering a clean 100ms/2W window (energy
+correctly computed as 0.2 J), a pulse with zero matching external samples
+(`no_samples`, energy correctly left `NaN`), and a window with one faulted
+sample among three clean ones (`contains_faults`, energy correctly
+computed from the clean subset), all passing. None of this is the same as
+running against a real ESP32, a real INA226, or a real serial port, and
+checklist item 12 stays unchecked in the README until that happens.
+`scripts/selftest.py` was not extended to cover these files in this pass,
+since they live outside `src/masenergy/` (which is what `selftest.py`
+currently exercises) and depend on `pyserial`, a laptop-only dependency
+`src/` deliberately never imports; a dedicated test entry point for
+`host/` would be a reasonable next step once real hardware exists to
+validate against, and is not claimed as done here.
+
+**Files touched.** `firmware/esp32/masenergy_sampler.ino` (new),
+`host/capture.py` (new), `host/join.py` (new), `README.md` (Section 3's
+file tree, Section 4's checklist item 12, Section 5.8's status paragraph,
+Section 6's what-runs-where table, new Section 8.6, this file).
 
 ## 2026-08-26: Verified: `planner_worker` never falls back, Stage 2 (recheck the agentic environment) closed
 

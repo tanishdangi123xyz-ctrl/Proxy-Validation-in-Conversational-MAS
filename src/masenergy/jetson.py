@@ -13,6 +13,8 @@ and nothing recorded says so.
 Standard library only, Python 3.10 compatible.
 """
 
+import sys
+import threading
 import time
 from pathlib import Path
 
@@ -209,6 +211,154 @@ def read_frequencies(faults=None, devfreq_root=DEVFREQ_ROOT, cpu_root=Path("/"))
     if faults is not None and not all(values):
         faults.append("freq_unreadable")
     return tuple(values)
+
+
+class ThermalWatchdog:
+    """Background thread that stops a campaign before heat damages the board.
+
+    Structurally mirrors ina3221.RailSampler: a daemon thread polling on its
+    own schedule, a threading.Event for a clean shutdown, and a design that
+    survives being read from a different thread than the one writing to it.
+    The two solve different problems, though. RailSampler exists to make
+    power visible; this exists to make continuing dangerous, which is why it
+    checks every named thermal zone this device has (SoC always, CPU/GPU
+    where present) rather than only the one the comparability gate cares
+    about, and why crossing the ceiling latches rather than resets: once
+    tripped, this device is not to be trusted with another call this run,
+    even if the very next reading happens to come back cooler.
+
+    Runs for the whole lifetime of a campaign, started once in
+    JetsonDevice.start_safety_watchdog() before the first call, not
+    restarted per block or per call. A cooling failure does not wait
+    politely for the next call to begin, and this project's own settle()
+    waits and idle sampling are exactly the moments a temperature climbing
+    with nothing to show for it in the call records would otherwise go
+    unnoticed until the next call's before-reading caught it, which could be
+    minutes later at BLOCK_SETTLE_S.
+    """
+
+    def __init__(self, zones, limit_c, poll_s, consecutive,
+                 clock=time.monotonic, sleep=time.sleep):
+        """zones is [(label, read_fn), ...]; read_fn() -> float Celsius.
+
+        Every zone is checked on every poll and the watchdog trips on
+        whichever one is worst, since the thing being protected is the one
+        physical board underneath all of them, not a single sensor.
+        """
+        self.zones = list(zones)
+        self.limit_c = float(limit_c)
+        self.poll_s = float(poll_s)
+        self.consecutive = max(1, int(consecutive))
+        self._clock = clock
+        self._sleep = sleep
+        self._stop = threading.Event()
+        self._tripped = threading.Event()
+        self._trip_info = None
+        self._over_streak = 0
+        self._thread = None
+        self.read_failures = 0
+
+    def start(self):
+        if self._thread is not None:
+            return
+        self._thread = threading.Thread(
+            target=self._loop, name="thermal-safety", daemon=True)
+        self._thread.start()
+
+    def _poll_once(self):
+        """One round of every zone; returns the worst (label, temp) pair.
+
+        A zone that fails to read is skipped for this poll rather than
+        treated as either safe or unsafe by assumption; soc_temp_unreadable
+        and friends already exist to surface a persistently failing sensor
+        through the ordinary hw_status path on the next call record, and
+        this watchdog would rather miss one noisy poll of a flaky zone than
+        either trip on a read error or silently stop protecting the board
+        because one of several zones went quiet.
+        """
+        worst = None
+        for label, read_fn in self.zones:
+            try:
+                temp = float(read_fn())
+            except (OSError, ValueError):
+                self.read_failures += 1
+                continue
+            if worst is None or temp > worst[1]:
+                worst = (label, temp)
+        return worst
+
+    def _step(self, worst, out=sys.stderr):
+        """Update trip state from one poll's (label, temp) or None.
+
+        Factored out of _loop so the policy (when does this trip, and does a
+        lost reading help or hurt) can be exercised directly against a
+        scripted sequence, the same way wait_until_in_band is tested without
+        a real thread or real elapsed time. out is injectable so the alert
+        message can be captured rather than actually printed in a test.
+        """
+        if worst is None:
+            # Every zone failed to read this poll. Left as a no-op rather
+            # than folded into either branch below: treating a lost reading
+            # as "safe" (resetting the streak) could erase real progress
+            # toward a trip during exactly the kind of sensor flakiness that
+            # ought to make an operator more cautious, not less, and
+            # treating it as "over limit" (incrementing the streak) would
+            # trip the watchdog on read errors alone, with no actual
+            # temperature behind it. A persistently failing zone still
+            # surfaces through the ordinary soc_temp_unreadable/
+            # cpu_temp_unreadable/gpu_temp_unreadable fault path on the next
+            # call record.
+            return
+        if worst[1] < self.limit_c:
+            self._over_streak = 0
+            return
+        self._over_streak += 1
+        if self._over_streak < self.consecutive or self._tripped.is_set():
+            return
+        label, temp = worst
+        self._trip_info = {
+            "zone": label,
+            "temp_c": temp,
+            "limit_c": self.limit_c,
+            "since_monotonic": self._clock(),
+        }
+        self._tripped.set()
+        # Deliberately loud and immediate, not batched behind
+        # HW_FAULT_ALERT_EVERY like an ordinary fault: this is the one
+        # condition in the whole pipeline meant to stop an unattended
+        # multi-day run, and an operator asleep or away from the terminal
+        # needs this line to be the one that is impossible to miss when
+        # they do look.
+        out.write(
+            "\n" + "!" * 72 +
+            "\nTHERMAL SAFETY WATCHDOG TRIPPED\n"
+            "  zone            %s\n"
+            "  temperature     %.1f C\n"
+            "  safety limit    %.1f C  (config.THERMAL_SAFETY_LIMIT_C)\n"
+            "  consecutive     %d polls over limit, %.1fs apart\n"
+            "No further calls will be issued. The campaign is stopping to "
+            "protect\nthe hardware. See CHANGES.md for what to check before "
+            "restarting.\n"
+            % (label, temp, self.limit_c, self._over_streak, self.poll_s)
+            + "!" * 72 + "\n\n")
+
+    def _loop(self):
+        while not self._stop.is_set():
+            self._step(self._poll_once())
+            self._sleep(self.poll_s)
+
+    def tripped(self):
+        """None while safe, or the trip detail dict once fired. Latches."""
+        return dict(self._trip_info) if self._tripped.is_set() else None
+
+    def alive(self):
+        return self._thread is not None and self._thread.is_alive()
+
+    def close(self):
+        self._stop.set()
+        if self._thread is not None:
+            self._thread.join(timeout=max(1.0, self.poll_s * 10))
+            self._thread = None
 
 
 class JetsonTrigger(Trigger):
@@ -430,6 +580,7 @@ class JetsonDevice(Device):
                 % (root, ", ".join(SOC_ZONE_NAMES),
                    ", ".join(sorted(self.zones)) or "no zones at all")
             )
+        self._watchdog = None
 
     def read_soc_temp(self):
         """Current SoC temperature in Celsius. The value the gate acts on."""
@@ -444,6 +595,49 @@ class JetsonDevice(Device):
             float(config.THERMAL_TIMEOUT_S),
             float(config.THERMAL_POLL_S),
         )
+
+    def start_safety_watchdog(self):
+        """Start the background thermal safety watchdog, once per device.
+
+        Every zone this board actually exposes is watched, not only the SoC
+        zone the comparability gate uses: a GPU or CPU zone running away
+        while the SoC zone lags behind it is exactly the asymmetric failure
+        a single-zone check would miss. Safe to call more than once; only
+        the first call starts a thread.
+        """
+        if self._watchdog is not None:
+            return
+        zones = [("soc", self.read_soc_temp)]
+        if self.cpu is not None:
+            zones.append(("cpu", lambda: read_zone_c(self.cpu)))
+        if self.gpu is not None:
+            zones.append(("gpu", lambda: read_zone_c(self.gpu)))
+        self._watchdog = ThermalWatchdog(
+            zones,
+            config.THERMAL_SAFETY_LIMIT_C,
+            config.THERMAL_SAFETY_POLL_S,
+            config.THERMAL_SAFETY_CONSECUTIVE,
+        )
+        self._watchdog.start()
+
+    def safety_tripped(self):
+        """None while safe, or the trip detail once the watchdog has fired.
+
+        None (not False) before start_safety_watchdog() has ever been
+        called, deliberately indistinguishable from "safe": a device that is
+        not being watched is not thereby unsafe, it is just not this
+        method's job to notice a watchdog nobody started. Runner.run()
+        starts it unconditionally before the first call for exactly this
+        reason, so this branch is not expected to matter in practice.
+        """
+        if self._watchdog is None:
+            return None
+        return self._watchdog.tripped()
+
+    def close(self):
+        """Stop the watchdog thread alongside everything else this run closes."""
+        if self._watchdog is not None:
+            self._watchdog.close()
 
     def _zone_or_nan(self, path, token, faults):
         """Zone temperature, or NaN where a sensor is genuinely absent.
