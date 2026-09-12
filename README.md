@@ -707,8 +707,10 @@ against the actual current values in `src/masenergy/config.py`:
 - Constrained decoding: none, retries are data. (No grammar or JSON-schema
   constraint appears anywhere in `client._payload()`.)
 - Context size: one fixed value for all 12 configs. (`config.CTX_SIZE =
-  3072`, one value shared by every one of the 12 (condition, temperature)
-  cells returned by `config.cells()`.)
+  2560`, one value shared by every one of the 12 (condition, temperature)
+  cells returned by `config.cells()`. Lowered from 3072 after real,
+  reproducible bring-up on this project's own Jetson Orin NX; see
+  `CHANGES.md`.)
 - Power mode: fixed `nvpmodel`, `jetson_clocks` locked, fan at fixed PWM.
   (`config.FAN_PWM = 255` is already fixed; `config.NVPMODEL_MODE` is, as
   of this writing, still `None`; it is one of the `REQUIRED_BEFORE_RUN`

@@ -30,7 +30,32 @@ THINKING_MODE = False
 SERVER_HOST = "127.0.0.1"
 SERVER_PORT = 8080
 SERVER_TIMEOUT_S = 600.0
-CTX_SIZE = 3072
+# Was 3072. Lowered after the Jetson Orin NX's CUDA allocator (NvMap, via
+# cudaMalloc) reliably failed to allocate the KV cache at 3072 even with the
+# desktop environment stopped (systemctl set-default multi-user.target) and
+# every reclaimable process killed first. This is not a total-RAM shortage:
+# free -h showed 6.6GiB available at the moment of failure. It is a fixed,
+# much smaller GPU-allocatable pool that this board's JetPack build exposes
+# separately from general system memory, and it does not respond to freeing
+# general RAM, adding swap, or GGML_CUDA_ENABLE_UNIFIED_MEMORY=1 (confirmed
+# broken upstream: ggml-org/llama.cpp#16197).
+#
+# Bisected on-device with scripts/serve_dev.sh's dev-only ctx override
+# (never through this constant, so no half-tested value was ever live here):
+#   2048  loads and serves successfully
+#   2560  loads and serves successfully
+#   2624  fails allocating the KV cache buffer
+#   2688  fails allocating the KV cache buffer
+#   2816  fails allocating the KV cache buffer
+#   3072  fails allocating the KV cache buffer (this was the old default)
+# True ceiling sits somewhere in (2560, 2624]. 2560 is set here rather than
+# a value closer to that ceiling on purpose: it is the largest value with a
+# confirmed clean run rather than the largest value that merely might work,
+# leaving margin against the run-to-run memory variance the bisection itself
+# showed (the same 3072 request failed at three different buffers - weights,
+# then KV cache, then the 51MiB compute buffer - across separate attempts as
+# other memory pressure on the board changed).
+CTX_SIZE = 2560
 
 LLAMA_FLAGS = (
     "--n-gpu-layers", "999",

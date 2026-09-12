@@ -26,7 +26,8 @@ which is what the entries below are.
 | `295678eeb8606cb8` | `a80170cf67250404` | 2026-08-23 | Samplers pinned, grading repaired, topologies repaired. Dry runs `054825Z`, `055334Z`. |
 | `c704ed501758a150` | `a80170cf67250404` | 2026-08-23, Phase 1.3 only | Adds `THERMAL_POLL_S` and `SETTLE_POLL_S`. No behavioural difference to any call. |
 | `74b943de71fe5fd8` | `a80170cf67250404` | 2026-08-23 to 08-24 | Adds `TRIGGER_CHIP`, `TRIGGER_LINE`, `TRIGGER_CONSUMER`, `METER_POLL_S`, `METER_RATE_FLOOR_HZ`, `HW_FAULT_ALERT_EVERY`. No behavioural difference to any call, but the hash moved, so rows either side must not be pooled. Dry runs `130219Z`, `131604Z`, `20260824T121313Z`. |
-| `74b943de71fe5fd8` | `61e6c78bad256b91` | 2026-08-24 onward | **Current, verified.** `config.py` unchanged from the row above. `debate_agent.txt`'s reconsideration paragraph rewritten to require evidence-grounded engagement with a peer's answer, to address `hotpotqa`'s debate answer-change rate sitting on the null-topology floor. Confirmed by dry run: `hotpotqa` change rate 10.0% -> 17.5% at n=40 agent-rounds, `hotpotqa` debate accuracy 60%, in band. See the 2026-08-24 verification entry. |
+| `74b943de71fe5fd8` | `61e6c78bad256b91` | 2026-08-24 to 09-12 | `config.py` unchanged from the row above. `debate_agent.txt`'s reconsideration paragraph rewritten to require evidence-grounded engagement with a peer's answer, to address `hotpotqa`'s debate answer-change rate sitting on the null-topology floor. Confirmed by dry run: `hotpotqa` change rate 10.0% -> 17.5% at n=40 agent-rounds, `hotpotqa` debate accuracy 60%, in band. See the 2026-08-24 verification entry. |
+| `893238fa72f57ccd` | `61e6c78bad256b91` | 2026-09-12 onward | **Current, verified.** `CTX_SIZE` lowered from 3072 to 2560, the only change. Reason and evidence in the 2026-09-12 entry below. Not comparable to any row above: every prior row's calls were measured, or would have been measured, at a context size this hardware cannot actually serve. |
 
 Item files are unchanged throughout and hash-verified on every load:
 `gsm_hard` `042ee4fe905b2304`, `hotpotqa` `b036fe9bbe7fc79a`.
@@ -58,10 +59,131 @@ Item files are unchanged throughout and hash-verified on every load:
 | Kernel thermal trip points surfaced in check_device.py, an independent backstop | working tree, uncommitted |
 | requirements.txt gains huggingface_hub, README documents the actual model-download step | working tree, uncommitted (docs plus one dependency line) |
 | Thermal zone matching fixed for JetPack 6 (blocker: campaign could not start) | working tree, uncommitted |
+| CTX_SIZE lowered 3072 -> 2560: the frozen context size did not fit this Jetson's GPU-allocatable memory | working tree, uncommitted |
 
 `8795032` is the commit that moved `config_hash` to `295678eeb8606cb8`. Anything
 recorded before it carries a different hash and must not be pooled with anything
 recorded after.
+
+---
+
+## 2026-09-12: CTX_SIZE lowered 3072 -> 2560, the frozen context size did not fit this Jetson
+
+### Why this was looked for
+
+Real bring-up on the physical Jetson Orin NX, the first time `llama-server`
+was ever launched on this specific board with the campaign's real model and
+real flags. `scripts/serve_dev.sh` (dev-only, reads every setting from
+`config.py` rather than hardcoding its own) failed to load the model at
+`config.CTX_SIZE`'s then-value of 3072, every time, across repeated attempts
+on separate boot sessions.
+
+### What was wrong
+
+`llama-server --n-gpu-layers 999 --ctx-size 3072 --cache-type-k f16
+--cache-type-v f16` failed inside `llama_init_from_model`, unable to
+allocate the KV cache buffer (336.00 MiB requested), with the underlying
+CUDA/Tegra error trace:
+
+```
+NvMapMemAllocInternalTagged: 1075072515 error 12
+NvMapMemHandleAlloc: error 0
+ggml_backend_cuda_buffer_type_alloc_buffer: allocating 336.00 MiB on device 0: cudaMalloc failed: out of memory
+alloc_tensor_range: failed to allocate CUDA0 buffer of size 352321536
+llama_init_from_model: failed to initialize the context: failed to allocate buffer for kv cache
+```
+
+This looked at first like an ordinary out-of-memory condition and was
+investigated as one: `free -h` and `tegrastats` were checked, and both
+showed several gigabytes of general system RAM free at the moment of
+failure (as much as 6.6 GiB available after later steps below). Closing
+background processes and adding swap were both considered as fixes on that
+assumption. Neither would have worked, and swap was never actually added,
+because the failure is not a general-RAM shortage: `cudaMalloc` on this
+board routes through Tegra's NvMap allocator, which draws from a separate,
+much smaller GPU-allocatable pool that `free -h` does not report and that
+ordinary system memory pressure does not affect.
+
+`GGML_CUDA_ENABLE_UNIFIED_MEMORY=1` was also tried, on the strength of a
+since-superseded forum report describing it as the fix for exactly this
+class of error on Jetson boards. It made no difference, run after run,
+which matches what a closer check found: this environment variable does
+not exist anywhere in `ggml-org/llama.cpp`'s current CMake configuration,
+and is tracked upstream as a known-broken, non-functional option
+(`ggml-org/llama.cpp#16197`). It is not wired to anything in the build this
+project uses.
+
+### What was fixed
+
+One real, reclaimable source of memory pressure was found and removed: the
+Jetson's desktop session (`gnome-shell`, `Xorg`, `gnome-software`, and the
+rest of the graphical stack under `graphical.target`) was running and
+holding a little over 2 GiB, unused, since all work on this board happens
+over SSH. Switching the boot target,
+
+```
+sudo systemctl set-default multi-user.target
+sudo reboot
+```
+
+dropped used memory from roughly 2.9 GiB to 645 MiB (confirmed via
+`free -h` before and after). This is a legitimate, permanent fix in its own
+right, not a workaround: a running desktop compositor has no reason to be
+part of a measurement rig's baseline load, on top of the memory it holds
+whether or not a physical monitor is attached or powered.
+
+Even with that reclaimed, 3072 still failed identically and reproducibly.
+The real constraint is the size of the GPU-allocatable pool itself, not
+what else happens to be using general RAM. `scripts/serve_dev.sh`'s
+dev-only context-size override (its second positional argument, which
+never touches `config.py` or `config_hash()`) was used to bisect the real
+ceiling on-device:
+
+| `--ctx-size` tried | Result |
+|---|---|
+| 2048 | loads, serves, confirmed with a real `/v1/chat/completions` request |
+| 2560 | loads and serves |
+| 2624 | fails allocating the KV cache buffer |
+| 2688 | fails allocating the KV cache buffer |
+| 2816 | fails allocating the KV cache buffer |
+| 3072 | fails (the old default); failed at three different allocation stages across separate attempts, weights, then KV cache, then a 51.01 MiB compute buffer, as whatever else was using memory at the time varied |
+
+The true ceiling sits somewhere in (2560, 2624]. `config.CTX_SIZE` is set to
+2560 rather than to a value closer to that ceiling on purpose: 2560 is the
+largest value with a confirmed clean run, not the largest value that merely
+might work. The variation in which allocation stage 3072 failed at across
+separate attempts is itself evidence that this board's available headroom
+moves by tens of megabytes run to run; a context size chosen right at the
+observed edge would risk an intermittent failure partway through a real
+campaign, which is worse than a smaller, reliably-working context size
+chosen with margin.
+
+This changes `config_hash()`: `74b943de71fe5fd8` -> `893238fa72f57ccd`. See
+[Hash history](#hash-history). Nothing else in `config.py` changed.
+
+### What was tested
+
+Confirmed on the physical Jetson Orin NX, not simulated: `scripts/
+serve_dev.sh models/Qwen3-1.7B-BF16.gguf` (no override, reading straight
+from `config.py`) loads and serves at 2560 with no warning. A real
+`/v1/chat/completions` request against the ctx=2048 dev instance returned
+genuine model output (reasoning tokens from Qwen3's thinking mode,
+`predicted_per_second` about 15 tokens/sec, `prompt_per_second` about 125
+tokens/sec), confirming the model runs correctly on this hardware once
+memory fits, not merely that the server binds a port.
+
+### What is still open
+
+Whether 2560 tokens is enough headroom for the campaign's actual prompts
+(worst-case debate/solver-critic/planner-worker prompt-plus-output length)
+has not been checked against this new, lower value. `scripts/dry_run.py`'s
+report section 5 (token length percentiles vs `CTX_SIZE` headroom) is the
+tool for this and has not yet been run against 2560 specifically; running
+it is the next step before trusting a real campaign at this context size.
+The gap between the confirmed-working ceiling (2560) and the confirmed-
+failing floor (2624) was not narrowed further, since 2560 already gives a
+working, documented value; the exact byte-level ceiling was not pinned down
+and was not needed to be.
 
 ---
 
